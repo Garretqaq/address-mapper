@@ -107,11 +107,23 @@ export class AddressMatcher {
     const normalized2 = this.normalizeName(str2);
     
     if (normalized1 === normalized2) return 1;
+    
+    // 优化：如果标准化后的字符串有包含关系，给予更高分数
     if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) {
       // 如果一个是另一个的子串，给予较高分数
       const minLen = Math.min(normalized1.length, normalized2.length);
       const maxLen = Math.max(normalized1.length, normalized2.length);
-      return minLen / maxLen * 0.9; // 包含关系给予0.9倍的基础分数
+      
+      // 如果短字符串长度 >= 2 且是长字符串的前缀或包含，给予更高分数
+      if (minLen >= 2) {
+        // 检查是否是前缀匹配（如"黔南"匹配"黔南布依族苗族自治州"）
+        if (normalized1.startsWith(normalized2) || normalized2.startsWith(normalized1)) {
+          return Math.min(0.95, minLen / maxLen * 0.95 + 0.1); // 前缀匹配给予更高分数
+        }
+        // 一般包含关系
+        return Math.min(0.9, minLen / maxLen * 0.9 + 0.05);
+      }
+      return minLen / maxLen * 0.8;
     }
 
     const maxLen = Math.max(str1.length, str2.length);
@@ -128,14 +140,20 @@ export class AddressMatcher {
   private normalizeName(name: string): string {
     if (!name || typeof name !== 'string') return '';
     
-    // 先处理长的复合后缀
+    // 先处理长的复合后缀（按长度从长到短排序）
     let normalized = name
+      .replace(/布依族苗族自治州$/, '')
+      .replace(/苗族侗族自治州$/, '')
       .replace(/维吾尔自治区$/, '')
       .replace(/回族自治区$/, '')
       .replace(/壮族自治区$/, '')
       .replace(/藏族自治州$/, '')
       .replace(/彝族自治州$/, '')
-      .replace(/苗族侗族自治州$/, '')
+      .replace(/朝鲜族自治州$/, '')
+      .replace(/蒙古族自治州$/, '')
+      .replace(/哈萨克族自治州$/, '')
+      .replace(/傣族景颇族自治州$/, '')
+      .replace(/哈尼族彝族自治州$/, '')
       .replace(/特别行政区$/, '')
       .replace(/自治区$/, '')
       .replace(/自治州$/, '')
@@ -593,12 +611,28 @@ export class AddressMatcher {
             method = method === 'none' ? 'exact' : method;
             cityMatched = true;
           } else if (normalizedOper && normalizedJunbo) {
-            // 否则使用相似度计算
-            const similarity = this.similarity(normalizedOper, normalizedJunbo);
-            if (similarity >= 0.7) {
-              score += 0.25 * similarity;
-              method = method === 'fuzzy' ? 'fuzzy' : method;
-              cityMatched = true;
+            // 检查包含关系（优化：如"黔南"匹配"黔南布依族苗族自治州"）
+            if (normalizedOper.includes(normalizedJunbo) || normalizedJunbo.includes(normalizedOper)) {
+              const minLen = Math.min(normalizedOper.length, normalizedJunbo.length);
+              const maxLen = Math.max(normalizedOper.length, normalizedJunbo.length);
+              // 如果短字符串长度 >= 2 且是长字符串的前缀，给予更高分数
+              if (minLen >= 2 && (normalizedOper.startsWith(normalizedJunbo) || normalizedJunbo.startsWith(normalizedOper))) {
+                score += 0.25 * 0.95; // 前缀匹配给予更高分数
+                method = method === 'none' ? 'exact' : method;
+                cityMatched = true;
+              } else if (minLen >= 2) {
+                score += 0.25 * 0.85; // 一般包含关系
+                method = method === 'fuzzy' ? 'fuzzy' : method;
+                cityMatched = true;
+              }
+            } else {
+              // 否则使用相似度计算
+              const similarity = this.similarity(normalizedOper, normalizedJunbo);
+              if (similarity >= 0.7) {
+                score += 0.25 * similarity;
+                method = method === 'fuzzy' ? 'fuzzy' : method;
+                cityMatched = true;
+              }
             }
           }
         }
