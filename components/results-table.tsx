@@ -14,7 +14,8 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import type { AddressMatchResult } from '@/lib/types';
 
-const ITEMS_PER_PAGE = 50; // 每页显示条数
+const DEFAULT_ITEMS_PER_PAGE = 20; // 默认每页显示条数
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]; // 可选的每页显示条数
 
 // 局方地址三级联动数据结构
 interface OperAddressHierarchy {
@@ -61,6 +62,7 @@ export function ResultsTable({
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(DEFAULT_ITEMS_PER_PAGE);
   
   // 记录修改过的行索引
   const [modifiedRows, setModifiedRows] = useState<Set<number>>(new Set());
@@ -337,17 +339,36 @@ export function ResultsTable({
    * 分页数据
    */
   const paginatedResults = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
     return filteredResults.slice(startIndex, endIndex);
-  }, [filteredResults, currentPage]);
+  }, [filteredResults, currentPage, itemsPerPage]);
 
   /**
    * 总页数
    */
   const totalPages = useMemo(() => {
-    return Math.ceil(filteredResults.length / ITEMS_PER_PAGE);
-  }, [filteredResults]);
+    return Math.ceil(filteredResults.length / itemsPerPage);
+  }, [filteredResults, itemsPerPage]);
+
+  /**
+   * 处理分页大小变化
+   */
+  const handlePageSizeChange = useCallback((size: string) => {
+    const newSize = parseInt(size, 10);
+    setItemsPerPage(newSize);
+    // 使用函数式更新，确保使用最新的 filteredResults
+    setCurrentPage(prevPage => {
+      const newTotalPages = Math.ceil(filteredResults.length / newSize);
+      // 如果当前页超出新总页数，跳转到最后一页，否则保持在当前页
+      if (prevPage > newTotalPages && newTotalPages > 0) {
+        return newTotalPages;
+      } else if (newTotalPages === 0) {
+        return 1;
+      }
+      return prevPage;
+    });
+  }, [filteredResults.length]);
 
   /**
    * 处理局方地址修改
@@ -453,7 +474,7 @@ export function ResultsTable({
     } else {
       const newSet = new Set<number>();
       paginatedResults.forEach((result, index) => {
-        const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
+        const filteredIndex = (currentPage - 1) * itemsPerPage + index;
         const actualRowIndex = filteredIndex < filteredResults.length 
           ? results.findIndex(r => r === filteredResults[filteredIndex])
           : -1;
@@ -463,7 +484,7 @@ export function ResultsTable({
       });
       setSelectedRows(newSet);
     }
-  }, [selectedRows.size, paginatedResults, currentPage, filteredResults, results]);
+  }, [selectedRows.size, paginatedResults, currentPage, filteredResults, results, itemsPerPage]);
 
   /**
    * 清空选择
@@ -970,8 +991,8 @@ export function ResultsTable({
                   </tr>
                 ) : (
                   paginatedResults.map((result, index) => {
-                    const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                    const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
+                    const globalIndex = (currentPage - 1) * itemsPerPage + index + 1;
+                    const filteredIndex = (currentPage - 1) * itemsPerPage + index;
                     const actualRowIndex = filteredIndex < filteredResults.length 
                       ? results.findIndex(r => r === filteredResults[filteredIndex])
                       : -1;
@@ -1063,15 +1084,32 @@ export function ResultsTable({
         {/* 固定底部：分页控件和统计信息 */}
         <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-white">
           <div className="flex items-center gap-4 flex-wrap">
-            {totalPages > 1 ? (
-              <div className="text-xs text-gray-600">
-                显示第 {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filteredResults.length)} 条，共 {filteredResults.length} 条
+            <div className="flex items-center gap-3">
+              {filteredResults.length > 0 ? (
+                <div className="text-xs text-gray-600">
+                  {totalPages > 1 ? (
+                    <>显示第 {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredResults.length)} 条，共 {filteredResults.length} 条</>
+                  ) : (
+                    <>共 {filteredResults.length} 条</>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-600">暂无数据</div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-600 whitespace-nowrap">每页</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => handlePageSizeChange(e.target.value)}
+                  className="px-2 py-0.5 text-xs border border-gray-300 rounded bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                >
+                  {PAGE_SIZE_OPTIONS.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-600 whitespace-nowrap">条</span>
               </div>
-            ) : (
-              <div className="text-xs text-gray-600">
-                共 {filteredResults.length} 条
-              </div>
-            )}
+            </div>
             {(() => {
               const matchedCount = results.filter(r => normalizeConfidence(r.output.confidence) !== 'none').length;
               const highConfidenceCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'high').length;
