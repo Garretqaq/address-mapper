@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,9 +14,33 @@ import type { AddressMatchResult } from '@/lib/types';
 
 const ITEMS_PER_PAGE = 50; // 每页显示条数
 
+// 局方地址数据结构
+interface OperAddressData {
+  provinces: Map<string, { code: string; name: string }>;
+  cities: Map<string, { code: string; name: string; provinceCode: string; provinceName: string }>;
+  districts: Map<string, { code: string; name: string; cityCode: string; cityName: string; provinceCode: string; provinceName: string }>;
+}
+
+// 三级联动数据结构
+interface OperAddressHierarchy {
+  [provinceName: string]: {
+    code: string;
+    cities: {
+      [cityName: string]: {
+        code: string;
+        districts: {
+          [districtName: string]: string; // district code
+        };
+      };
+    };
+  };
+}
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [results, setResults] = useState<AddressMatchResult[]>([]);
+  // 保存原始导入数据，用于构建下拉选项（不会变动）
+  const [originalResults, setOriginalResults] = useState<AddressMatchResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   
@@ -27,6 +51,9 @@ export default function Home() {
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // 记录修改过的行索引
+  const [modifiedRows, setModifiedRows] = useState<Set<number>>(new Set());
 
   /**
    * 处理文件选择
@@ -37,6 +64,8 @@ export default function Home() {
       setFile(selectedFile);
       setError('');
       setResults([]);
+      setOriginalResults([]);
+      setModifiedRows(new Set()); // 清空修改记录
     }
   };
 
@@ -69,6 +98,9 @@ export default function Home() {
 
       if (data.success && data.data) {
         setResults(data.data);
+        // 保存原始导入数据（深拷贝）
+        setOriginalResults(JSON.parse(JSON.stringify(data.data)));
+        setModifiedRows(new Set()); // 清空修改记录
       } else {
         throw new Error('处理结果格式错误');
       }
@@ -86,6 +118,16 @@ export default function Home() {
     if (results.length === 0) {
       setError('没有可导出的数据');
       return;
+    }
+
+    // 如果有修改，给用户提示
+    if (modifiedRows.size > 0) {
+      const confirmed = window.confirm(
+        `您已修改了 ${modifiedRows.size} 条记录，这些修改将包含在导出的文件中。是否继续导出？`
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
@@ -140,7 +182,248 @@ export default function Home() {
   };
 
   /**
-   * 获取所有唯一的省份列表
+   * 构建局方地址三级联动数据结构（从原始导入数据提取）
+   */
+  const operAddressData = useMemo((): OperAddressData => {
+    const provinces = new Map<string, { code: string; name: string }>();
+    const cities = new Map<string, { code: string; name: string; provinceCode: string; provinceName: string }>();
+    const districts = new Map<string, { code: string; name: string; cityCode: string; cityName: string; provinceCode: string; provinceName: string }>();
+
+    results.forEach(result => {
+      const { input } = result;
+      
+      // 收集省份数据 - 只要有省份名称或编码就收集
+      if (input.省份名称 || input.省份编码) {
+        const code = input.省份编码 || '';
+        const name = input.省份名称 || '';
+        const key = `${code}-${name}`;
+        if (!provinces.has(key)) {
+          provinces.set(key, { code, name });
+        }
+      }
+      
+      // 收集城市数据 - 只要有城市名称或编码就收集
+      if (input.地市名称 || input.地市编码) {
+        const code = input.地市编码 || '';
+        const name = input.地市名称 || '';
+        const provinceCode = input.省份编码 || '';
+        const provinceName = input.省份名称 || '';
+        const key = `${code}-${name}`;
+        if (!cities.has(key)) {
+          cities.set(key, { 
+            code, 
+            name,
+            provinceCode,
+            provinceName
+          });
+        }
+      }
+      
+      // 收集区县数据 - 只要有区县名称或编码就收集
+      if (input.区县名称 || input.区县编码) {
+        const code = input.区县编码 || '';
+        const name = input.区县名称 || '';
+        const cityCode = input.地市编码 || '';
+        const cityName = input.地市名称 || '';
+        const provinceCode = input.省份编码 || '';
+        const provinceName = input.省份名称 || '';
+        const key = `${code}-${name}`;
+        if (!districts.has(key)) {
+          districts.set(key, { 
+            code, 
+            name,
+            cityCode,
+            cityName,
+            provinceCode,
+            provinceName
+          });
+        }
+      }
+    });
+
+    return { provinces, cities, districts };
+  }, [results]);
+
+  /**
+   * 构建局方地址三级联动层级结构（用于下拉选择）
+   * 从原始导入数据构建，确保选项列表不会变动
+   * 同时包含当前所有已选择的值（即使不在原始数据中）
+   */
+  const operAddressHierarchy = useMemo((): OperAddressHierarchy => {
+    const hierarchy: OperAddressHierarchy = {};
+
+    // 首先从原始导入数据构建
+    originalResults.forEach(result => {
+      const { input } = result;
+      
+      const provinceName = input.省份名称 || '';
+      const provinceCode = input.省份编码 || '';
+      const cityName = input.地市名称 || '';
+      const cityCode = input.地市编码 || '';
+      const districtName = input.区县名称 || '';
+      const districtCode = input.区县编码 || '';
+
+      if (provinceName) {
+        if (!hierarchy[provinceName]) {
+          hierarchy[provinceName] = {
+            code: provinceCode,
+            cities: {},
+          };
+        }
+
+        if (cityName) {
+          if (!hierarchy[provinceName].cities[cityName]) {
+            hierarchy[provinceName].cities[cityName] = {
+              code: cityCode,
+              districts: {},
+            };
+          }
+
+          if (districtName) {
+            hierarchy[provinceName].cities[cityName].districts[districtName] = districtCode;
+          }
+        }
+      }
+    });
+
+    // 然后添加当前所有已选择的值（确保用户修改后的值也能在下拉列表中显示）
+    results.forEach(result => {
+      const provinceName = result.output.oper_province_name || '';
+      const cityName = result.output.oper_city_name || '';
+      const districtName = result.output.oper_district_name || '';
+      const provinceCode = result.input.省份编码 || '';
+      const cityCode = result.input.地市编码 || '';
+      const districtCode = result.input.区县编码 || '';
+
+      if (provinceName) {
+        if (!hierarchy[provinceName]) {
+          hierarchy[provinceName] = {
+            code: provinceCode,
+            cities: {},
+          };
+        }
+
+        if (cityName) {
+          if (!hierarchy[provinceName].cities[cityName]) {
+            hierarchy[provinceName].cities[cityName] = {
+              code: cityCode,
+              districts: {},
+            };
+          }
+
+          if (districtName) {
+            hierarchy[provinceName].cities[cityName].districts[districtName] = districtCode;
+          }
+        }
+      }
+    });
+
+    return hierarchy;
+  }, [originalResults, results]);
+
+  /**
+   * 获取所有唯一的局方省份列表
+   */
+  const operProvinceList = useMemo(() => {
+    return Object.keys(operAddressHierarchy).sort();
+  }, [operAddressHierarchy]);
+
+  /**
+   * 缓存城市列表（按省份分组）
+   */
+  const citiesByProvinceCache = useMemo(() => {
+    const cache = new Map<string, string[]>();
+    Object.keys(operAddressHierarchy).forEach(provinceName => {
+      const cities = Object.keys(operAddressHierarchy[provinceName].cities).sort();
+      cache.set(provinceName, cities);
+    });
+    return cache;
+  }, [operAddressHierarchy]);
+
+  /**
+   * 缓存区县列表（按省份+城市分组）
+   */
+  const districtsByCityCache = useMemo(() => {
+    const cache = new Map<string, string[]>();
+    Object.keys(operAddressHierarchy).forEach(provinceName => {
+      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
+        const key = `${provinceName}-${cityName}`;
+        const districts = Object.keys(operAddressHierarchy[provinceName].cities[cityName].districts).sort();
+        cache.set(key, districts);
+      });
+    });
+    return cache;
+  }, [operAddressHierarchy]);
+
+  /**
+   * 根据省份获取城市列表（使用缓存）
+   */
+  const getOperCitiesByProvince = (provinceName: string): string[] => {
+    return citiesByProvinceCache.get(provinceName) || [];
+  };
+
+  /**
+   * 根据省份和城市获取区县列表（使用缓存）
+   */
+  const getOperDistrictsByCity = (provinceName: string, cityName: string): string[] => {
+    const key = `${provinceName}-${cityName}`;
+    return districtsByCityCache.get(key) || [];
+  };
+
+  /**
+   * 缓存地址编码（优化性能）
+   */
+  const provinceCodeCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    Object.keys(operAddressHierarchy).forEach(provinceName => {
+      cache.set(provinceName, operAddressHierarchy[provinceName].code || '');
+    });
+    return cache;
+  }, [operAddressHierarchy]);
+
+  const cityCodeCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    Object.keys(operAddressHierarchy).forEach(provinceName => {
+      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
+        const key = `${provinceName}-${cityName}`;
+        cache.set(key, operAddressHierarchy[provinceName].cities[cityName].code || '');
+      });
+    });
+    return cache;
+  }, [operAddressHierarchy]);
+
+  const districtCodeCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    Object.keys(operAddressHierarchy).forEach(provinceName => {
+      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
+        Object.keys(operAddressHierarchy[provinceName].cities[cityName].districts).forEach(districtName => {
+          const key = `${provinceName}-${cityName}-${districtName}`;
+          cache.set(key, operAddressHierarchy[provinceName].cities[cityName].districts[districtName] || '');
+        });
+      });
+    });
+    return cache;
+  }, [operAddressHierarchy]);
+
+  /**
+   * 获取地址编码（使用缓存优化）
+   */
+  const getOperProvinceCode = useCallback((provinceName: string): string => {
+    return provinceCodeCache.get(provinceName) || '';
+  }, [provinceCodeCache]);
+
+  const getOperCityCode = useCallback((provinceName: string, cityName: string): string => {
+    const key = `${provinceName}-${cityName}`;
+    return cityCodeCache.get(key) || '';
+  }, [cityCodeCache]);
+
+  const getOperDistrictCode = useCallback((provinceName: string, cityName: string, districtName: string): string => {
+    const key = `${provinceName}-${cityName}-${districtName}`;
+    return districtCodeCache.get(key) || '';
+  }, [districtCodeCache]);
+
+  /**
+   * 获取所有唯一的省份列表（骏伯）
    */
   const uniqueProvinces = useMemo(() => {
     const provinces = new Set<string>();
@@ -153,7 +436,7 @@ export default function Home() {
   }, [results]);
 
   /**
-   * 获取所有唯一的城市列表（根据选中的省份筛选）
+   * 获取所有唯一的城市列表（根据选中的省份筛选）（骏伯）
    */
   const uniqueCities = useMemo(() => {
     const cities = new Set<string>();
@@ -167,6 +450,8 @@ export default function Home() {
     });
     return Array.from(cities).sort();
   }, [results, filterProvince]);
+
+
 
   /**
    * 筛选后的数据
@@ -235,6 +520,96 @@ export default function Home() {
     }
     setCurrentPage(1); // 重置到第一页
   };
+
+  /**
+   * 处理局方地址修改（使用 useCallback 优化）
+   */
+  const handleAddressChange = useCallback((
+    rowIndex: number,
+    type: 'province' | 'city' | 'district',
+    value: string
+  ) => {
+    setResults(prevResults => {
+      const newResults = [...prevResults];
+      const result = newResults[rowIndex];
+      
+      if (!result) return prevResults;
+
+      const newOutput = { ...result.output };
+
+      if (type === 'province') {
+        // 修改省份
+        newOutput.oper_province_name = value;
+        const provinceCode = getOperProvinceCode(value);
+        
+        // 清空城市和区县
+        newOutput.oper_city_name = '';
+        newOutput.oper_city_code = '';
+        newOutput.oper_district_name = '';
+        newOutput.oper_district_code = '';
+        
+        // 同时更新 input 数据
+        const newInput = { ...result.input };
+        newInput.省份名称 = value;
+        newInput.省份编码 = provinceCode;
+        newInput.地市名称 = '';
+        newInput.地市编码 = '';
+        newInput.区县名称 = '';
+        newInput.区县编码 = '';
+        
+        newResults[rowIndex] = {
+          ...result,
+          input: newInput,
+          output: newOutput,
+        };
+      } else if (type === 'city') {
+        // 修改城市
+        const provinceName = result.output.oper_province_name || '';
+        newOutput.oper_city_name = value;
+        const cityCode = getOperCityCode(provinceName, value);
+        
+        // 清空区县
+        newOutput.oper_district_name = '';
+        newOutput.oper_district_code = '';
+        
+        // 同时更新 input 数据
+        const newInput = { ...result.input };
+        newInput.地市名称 = value;
+        newInput.地市编码 = cityCode;
+        newInput.区县名称 = '';
+        newInput.区县编码 = '';
+        
+        newResults[rowIndex] = {
+          ...result,
+          input: newInput,
+          output: newOutput,
+        };
+      } else if (type === 'district') {
+        // 修改区县
+        const provinceName = result.output.oper_province_name || '';
+        const cityName = result.output.oper_city_name || '';
+        newOutput.oper_district_name = value;
+        const districtCode = getOperDistrictCode(provinceName, cityName, value);
+        
+        // 同时更新 input 数据
+        const newInput = { ...result.input };
+        newInput.区县名称 = value;
+        newInput.区县编码 = districtCode;
+        
+        newResults[rowIndex] = {
+          ...result,
+          input: newInput,
+          output: newOutput,
+        };
+      }
+
+      // 记录修改的行
+      setModifiedRows(prev => new Set(prev).add(rowIndex));
+
+      return newResults;
+    });
+  }, [getOperProvinceCode, getOperCityCode, getOperDistrictCode]);
+
 
   /**
    * 获取匹配状态徽章
@@ -417,15 +792,94 @@ export default function Home() {
                 <tbody>
                   {paginatedResults.map((result, index) => {
                     const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                    // 优化：直接使用索引计算，避免 findIndex 的性能问题
+                    const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
+                    // 从 filteredResults 中找到对应的 result，然后在 results 中查找
+                    const actualRowIndex = filteredIndex < filteredResults.length 
+                      ? results.findIndex(r => r === filteredResults[filteredIndex])
+                      : -1;
+                    const isModified = actualRowIndex >= 0 && modifiedRows.has(actualRowIndex);
+                    
+                    // 获取当前行的局方地址值
+                    const currentProvince = result.output.oper_province_name || '';
+                    const currentCity = result.output.oper_city_name || '';
+                    const currentDistrict = result.output.oper_district_name || '';
+                    
+                    // 获取可用的选项列表（使用缓存的函数）
+                    const availableCities = currentProvince ? getOperCitiesByProvince(currentProvince) : [];
+                    const availableDistricts = currentProvince && currentCity ? getOperDistrictsByCity(currentProvince, currentCity) : [];
+
                     return (
-                      <tr key={`${currentPage}-${index}`} className="border-b hover:bg-gray-50">
+                      <tr 
+                        key={`${currentPage}-${index}`} 
+                        className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''}`}
+                      >
                         <td className="px-4 py-3">{globalIndex}</td>
                         <td className="px-4 py-3">{result.output.junbo_province_name || '-'}</td>
-                        <td className="px-4 py-3">{result.output.oper_province_name || '-'}</td>
+                        
+                        {/* 局方省份 - 可编辑下拉框 */}
+                        <td className="px-4 py-3">
+                          <Select
+                            value={currentProvince || undefined}
+                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
+                          >
+                            <SelectTrigger className="w-full min-w-[120px]">
+                              <SelectValue placeholder="选择省份" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operProvinceList.map(province => (
+                                <SelectItem key={province} value={province}>
+                                  {province}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
                         <td className="px-4 py-3">{result.output.junbo_city_name || '-'}</td>
-                        <td className="px-4 py-3">{result.output.oper_city_name || '-'}</td>
+                        
+                        {/* 局方城市 - 可编辑下拉框 */}
+                        <td className="px-4 py-3">
+                          <Select
+                            value={currentCity || undefined}
+                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
+                            disabled={!currentProvince}
+                          >
+                            <SelectTrigger className="w-full min-w-[120px]">
+                              <SelectValue placeholder={currentProvince ? "选择城市" : "请先选择省份"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableCities.map(city => (
+                                <SelectItem key={city} value={city}>
+                                  {city}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
                         <td className="px-4 py-3">{result.output.junbo_district_name || '-'}</td>
-                        <td className="px-4 py-3">{result.output.oper_district_name || '-'}</td>
+                        
+                        {/* 局方区县 - 可编辑下拉框 */}
+                        <td className="px-4 py-3">
+                          <Select
+                            value={currentDistrict || undefined}
+                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}
+                            disabled={!currentProvince || !currentCity}
+                          >
+                            <SelectTrigger className="w-full min-w-[120px]">
+                              <SelectValue placeholder={currentProvince && currentCity ? "选择区县" : "请先选择城市"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableDistricts.map(district => (
+                                <SelectItem key={district} value={district}>
+                                  {district}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        
                         <td className="px-4 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
                       </tr>
                     );
