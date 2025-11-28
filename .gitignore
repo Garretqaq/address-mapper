@@ -44,3 +44,9 @@ yarn-error.log*
 next-env.d.ts
 
 .cursor
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+!.edgeone/project.json
+.tef_dist/*
+  
