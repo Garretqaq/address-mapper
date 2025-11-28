@@ -644,8 +644,8 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
-      <div className="max-w-7xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-6 lg:p-8">
+      <div className="max-w-[85%] mx-auto">
         {/* 标题区域 */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">地址映射转换工具</h1>
@@ -653,7 +653,7 @@ export default function Home() {
         </div>
 
         {/* 主要操作区域 */}
-        <div className="bg-white rounded-lg shadow-xl p-8 mb-8">
+        <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8 mb-6 md:mb-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
             {/* 文件上传区域 */}
             <div className="flex-1 w-full">
@@ -739,7 +739,7 @@ export default function Home() {
 
         {/* 结果展示区域 */}
         {results.length > 0 && (
-          <div className="bg-white rounded-lg shadow-xl p-8">
+          <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">
                 转换结果（显示所有骏伯地址库条目）
@@ -792,20 +792,21 @@ export default function Home() {
             </div>
 
             {/* 表格 */}
-            <div className="overflow-x-auto mb-6">
-              <table className="w-full text-sm text-left text-gray-700">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                  <tr>
-                    <th className="px-4 py-3">序号</th>
-                    <th className="px-4 py-3">Junbo 省份</th>
-                    <th className="px-4 py-3">局方省份</th>
-                    <th className="px-4 py-3">Junbo 地市</th>
-                    <th className="px-4 py-3">局方地市</th>
-                    <th className="px-4 py-3">Junbo 区县</th>
-                    <th className="px-4 py-3">局方区县</th>
-                    <th className="px-4 py-3">匹配状态</th>
-                  </tr>
-                </thead>
+            <div className="overflow-x-auto mb-6 -mx-2 md:-mx-4">
+              <div className="inline-block min-w-full align-middle px-2 md:px-4">
+                <table className="w-full text-sm text-left text-gray-700">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-3 w-16">序号</th>
+                      <th className="px-3 py-3 min-w-[120px]">Junbo 省份</th>
+                      <th className="px-3 py-3 min-w-[140px]">局方省份</th>
+                      <th className="px-3 py-3 min-w-[120px]">Junbo 地市</th>
+                      <th className="px-3 py-3 min-w-[140px]">局方地市</th>
+                      <th className="px-3 py-3 min-w-[120px]">Junbo 区县</th>
+                      <th className="px-3 py-3 min-w-[140px]">局方区县</th>
+                      <th className="px-3 py-3 w-24">匹配状态</th>
+                    </tr>
+                  </thead>
                 <tbody>
                   {paginatedResults.map((result, index) => {
                     const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
@@ -831,54 +832,55 @@ export default function Home() {
                         key={`${currentPage}-${index}`} 
                         className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''}`}
                       >
-                        <td className="px-4 py-3">{globalIndex}</td>
-                        <td className="px-4 py-3">{result.output.junbo_province_name || '-'}</td>
+                        <td className="px-3 py-3">{globalIndex}</td>
+                        <td className="px-3 py-3">{result.output.junbo_province_name || '-'}</td>
                         
                         {/* 局方省份 - 可编辑下拉框 */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <SearchableSelect
                             value={currentProvince}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
                             options={operProvinceList}
                             placeholder="选择省份"
-                            className="w-full min-w-[120px]"
+                            className="w-full"
                           />
                         </td>
                         
-                        <td className="px-4 py-3">{result.output.junbo_city_name || '-'}</td>
+                        <td className="px-3 py-3">{result.output.junbo_city_name || '-'}</td>
                         
                         {/* 局方城市 - 可编辑下拉框 */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <SearchableSelect
                             value={currentCity}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
                             options={availableCities}
                             placeholder={currentProvince ? "选择城市" : "请先选择省份"}
                             disabled={!currentProvince}
-                            className="w-full min-w-[120px]"
+                            className="w-full"
                           />
                         </td>
                         
-                        <td className="px-4 py-3">{result.output.junbo_district_name || '-'}</td>
+                        <td className="px-3 py-3">{result.output.junbo_district_name || '-'}</td>
                         
                         {/* 局方区县 - 可编辑下拉框 */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <SearchableSelect
                             value={currentDistrict}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}
                             options={availableDistricts}
                             placeholder={currentProvince && currentCity ? "选择区县" : "请先选择城市"}
                             disabled={!currentProvince || !currentCity}
-                            className="w-full min-w-[120px]"
+                            className="w-full"
                           />
                         </td>
                         
-                        <td className="px-4 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
+                        <td className="px-3 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* 分页控件 */}
