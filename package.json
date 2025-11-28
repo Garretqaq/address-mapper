@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:functions": "edgeone pages dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

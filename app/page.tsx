@@ -94,10 +94,61 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      // 优先使用 Node Function（支持更长的执行时间，避免 30 秒超时）
+      // 在本地开发时，默认使用 /api/upload（Next.js API Route）
+      // 部署到 EdgeOne 后，会自动使用 /upload（Node Function）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 分钟超时
+      
+      // 检测是否为本地开发环境
+      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      let response: Response;
+      let apiUrl = '/api/upload'; // 默认使用 API route
+      
+      // 如果不是本地开发，尝试使用 Node Function
+      if (!isLocalDev) {
+        try {
+          response = await fetch('/upload', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal,
+          });
+          
+          // 如果 Node Function 返回 404，回退到 API route
+          if (response.status === 404) {
+            console.log('Node Function 不可用，使用 API route...');
+            apiUrl = '/api/upload';
+            response = await fetch(apiUrl, {
+              method: 'POST',
+              body: formData,
+              signal: controller.signal,
+            });
+          }
+        } catch (err) {
+          // 如果 Node Function 失败，使用 API route
+          if (err instanceof Error && err.name !== 'AbortError') {
+            console.log('Node Function 失败，使用 API route...');
+            apiUrl = '/api/upload';
+            response = await fetch(apiUrl, {
+              method: 'POST',
+              body: formData,
+              signal: controller.signal,
+            });
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        // 本地开发直接使用 API route
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+      }
+      
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -122,7 +173,40 @@ export default function Home() {
         throw new Error('处理结果格式错误');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '处理失败');
+      // 如果是超时或网络错误，尝试使用原 API route 作为回退
+      if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('fetch'))) {
+        try {
+          console.log('Node Function 超时或失败，尝试使用原 API route...');
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const fallbackResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const fallbackData = await fallbackResponse.json();
+          
+          if (fallbackResponse.ok && fallbackData.success && fallbackData.data) {
+            const resultsData = Array.isArray(fallbackData.data) 
+              ? fallbackData.data 
+              : fallbackData.data.results || [];
+            const originalInputs = Array.isArray(fallbackData.data)
+              ? []
+              : fallbackData.data.originalInputs || [];
+            
+            setResults(resultsData);
+            setOriginalOperInputs(JSON.parse(JSON.stringify(originalInputs)));
+            setModifiedRows(new Set());
+            return; // 成功，直接返回
+          }
+        } catch (fallbackErr) {
+          setError('处理超时，请尝试上传较小的文件或联系管理员');
+          console.error('回退 API 也失败:', fallbackErr);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : '处理失败');
+      }
     } finally {
       setIsProcessing(false);
     }
