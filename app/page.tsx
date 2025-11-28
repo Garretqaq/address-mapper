@@ -6,37 +6,10 @@
 
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X, Search, Square, CheckSquare } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SearchableSelect } from '@/components/ui/searchable-select';
-import { Input } from '@/components/ui/input';
+import { useState, useMemo } from 'react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, FileDown, ArrowLeft } from 'lucide-react';
 import type { AddressMatchResult } from '@/lib/types';
-
-const ITEMS_PER_PAGE = 50; // 每页显示条数
-
-// 局方地址数据结构
-interface OperAddressData {
-  provinces: Map<string, { code: string; name: string }>;
-  cities: Map<string, { code: string; name: string; provinceCode: string; provinceName: string }>;
-  districts: Map<string, { code: string; name: string; cityCode: string; cityName: string; provinceCode: string; provinceName: string }>;
-}
-
-// 三级联动数据结构
-interface OperAddressHierarchy {
-  [provinceName: string]: {
-    code: string;
-    cities: {
-      [cityName: string]: {
-        code: string;
-        districts: {
-          [districtName: string]: string; // district code
-        };
-      };
-    };
-  };
-}
+import { ResultsTable } from '@/components/results-table';
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -53,29 +26,8 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   
-  // 筛选状态
-  const [filterConfidence, setFilterConfidence] = useState<string>('all');
-  const [filterProvince, setFilterProvince] = useState<string>('all');
-  const [filterCity, setFilterCity] = useState<string>('all');
-  
-  // 搜索状态
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  
-  // 分页状态
-  const [currentPage, setCurrentPage] = useState(1);
-  
-  // 记录修改过的行索引
-  const [modifiedRows, setModifiedRows] = useState<Set<number>>(new Set());
-  
-  // 批量选择状态
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const [isSelectMode, setIsSelectMode] = useState(false);
-  
-  // 批量修改状态
-  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
-  const [batchProvince, setBatchProvince] = useState<string>('');
-  const [batchCity, setBatchCity] = useState<string>('');
-  const [batchDistrict, setBatchDistrict] = useState<string>('');
+  // 页面状态：'upload' | 'results'
+  const [currentPage, setCurrentPage] = useState<'upload' | 'results'>('upload');
 
   /**
    * 处理文件选择
@@ -87,7 +39,7 @@ export default function Home() {
       setError('');
       setResults([]);
       setOriginalOperInputs([]);
-      setModifiedRows(new Set()); // 清空修改记录
+      setCurrentPage('upload'); // 重置到上传页面
     }
   };
 
@@ -130,7 +82,8 @@ export default function Home() {
         setResults(resultsData);
         // 保存原始上传的局方地址数据
         setOriginalOperInputs(JSON.parse(JSON.stringify(originalInputs)));
-        setModifiedRows(new Set()); // 清空修改记录
+        // 转换成功后切换到结果页面
+        setCurrentPage('results');
       } else {
         throw new Error('处理结果格式错误');
       }
@@ -140,37 +93,6 @@ export default function Home() {
       setIsProcessing(false);
     }
   };
-
-
-  /**
-   * 批量选择处理
-   */
-  const handleSelectRow = (rowIndex: number) => {
-    setSelectedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(rowIndex)) {
-        newSet.delete(rowIndex);
-      } else {
-        newSet.add(rowIndex);
-      }
-      return newSet;
-    });
-  };
-
-
-  /**
-   * 清空选择
-   */
-  const handleClearSelection = () => {
-    setSelectedRows(new Set());
-    setIsSelectMode(false);
-    setIsBatchEditMode(false);
-    setBatchProvince('');
-    setBatchCity('');
-    setBatchDistrict('');
-  };
-
-
 
   /**
    * 下载模板文件
@@ -197,472 +119,17 @@ export default function Home() {
   };
 
   /**
-   * 构建局方地址三级联动数据结构（从原始导入数据提取）
+   * 导出结果为 Excel（仅用于导出全部，其他导出类型在 ResultsTable 组件内部处理）
    */
-  const operAddressData = useMemo((): OperAddressData => {
-    const provinces = new Map<string, { code: string; name: string }>();
-    const cities = new Map<string, { code: string; name: string; provinceCode: string; provinceName: string }>();
-    const districts = new Map<string, { code: string; name: string; cityCode: string; cityName: string; provinceCode: string; provinceName: string }>();
-
-    results.forEach(result => {
-      const { input } = result;
-      
-      // 收集省份数据 - 只要有省份名称或编码就收集
-      if (input.省份名称 || input.省份编码) {
-        const code = input.省份编码 || '';
-        const name = input.省份名称 || '';
-        const key = `${code}-${name}`;
-        if (!provinces.has(key)) {
-          provinces.set(key, { code, name });
-        }
-      }
-      
-      // 收集城市数据 - 只要有城市名称或编码就收集
-      if (input.地市名称 || input.地市编码) {
-        const code = input.地市编码 || '';
-        const name = input.地市名称 || '';
-        const provinceCode = input.省份编码 || '';
-        const provinceName = input.省份名称 || '';
-        const key = `${code}-${name}`;
-        if (!cities.has(key)) {
-          cities.set(key, { 
-            code, 
-            name,
-            provinceCode,
-            provinceName
-          });
-        }
-      }
-      
-      // 收集区县数据 - 只要有区县名称或编码就收集
-      if (input.区县名称 || input.区县编码) {
-        const code = input.区县编码 || '';
-        const name = input.区县名称 || '';
-        const cityCode = input.地市编码 || '';
-        const cityName = input.地市名称 || '';
-        const provinceCode = input.省份编码 || '';
-        const provinceName = input.省份名称 || '';
-        const key = `${code}-${name}`;
-        if (!districts.has(key)) {
-          districts.set(key, { 
-            code, 
-            name,
-            cityCode,
-            cityName,
-            provinceCode,
-            provinceName
-          });
-        }
-      }
-    });
-
-    return { provinces, cities, districts };
-  }, [results]);
-
-  /**
-   * 构建局方地址三级联动层级结构（用于下拉选择）
-   * 从原始上传的局方地址数据构建，确保所有未匹配的数据也能在下拉框中显示
-   * 同时包含当前所有已选择的值（即使不在原始数据中）
-   */
-  const operAddressHierarchy = useMemo((): OperAddressHierarchy => {
-    const hierarchy: OperAddressHierarchy = {};
-
-    // 首先从原始上传的局方地址数据构建（包含所有未匹配的数据）
-    originalOperInputs.forEach(input => {
-      const provinceName = input.省份名称 || '';
-      const provinceCode = input.省份编码 || '';
-      const cityName = input.地市名称 || '';
-      const cityCode = input.地市编码 || '';
-      const districtName = input.区县名称 || '';
-      const districtCode = input.区县编码 || '';
-
-      if (provinceName) {
-        if (!hierarchy[provinceName]) {
-          hierarchy[provinceName] = {
-            code: provinceCode,
-            cities: {},
-          };
-        }
-
-        if (cityName) {
-          if (!hierarchy[provinceName].cities[cityName]) {
-            hierarchy[provinceName].cities[cityName] = {
-              code: cityCode,
-              districts: {},
-            };
-          }
-
-          if (districtName) {
-            hierarchy[provinceName].cities[cityName].districts[districtName] = districtCode;
-          }
-        }
-      }
-    });
-
-    // 然后添加当前所有已选择的值（确保用户修改后的值也能在下拉列表中显示）
-    results.forEach(result => {
-      const provinceName = result.output.oper_province_name || '';
-      const cityName = result.output.oper_city_name || '';
-      const districtName = result.output.oper_district_name || '';
-      const provinceCode = result.input.省份编码 || '';
-      const cityCode = result.input.地市编码 || '';
-      const districtCode = result.input.区县编码 || '';
-
-      if (provinceName) {
-        if (!hierarchy[provinceName]) {
-          hierarchy[provinceName] = {
-            code: provinceCode,
-            cities: {},
-          };
-        }
-
-        if (cityName) {
-          if (!hierarchy[provinceName].cities[cityName]) {
-            hierarchy[provinceName].cities[cityName] = {
-              code: cityCode,
-              districts: {},
-            };
-          }
-
-          if (districtName) {
-            hierarchy[provinceName].cities[cityName].districts[districtName] = districtCode;
-          }
-        }
-      }
-    });
-
-    return hierarchy;
-  }, [originalOperInputs, results]);
-
-  /**
-   * 获取所有唯一的局方省份列表
-   */
-  const operProvinceList = useMemo(() => {
-    return Object.keys(operAddressHierarchy).sort();
-  }, [operAddressHierarchy]);
-
-  /**
-   * 缓存城市列表（按省份分组）
-   */
-  const citiesByProvinceCache = useMemo(() => {
-    const cache = new Map<string, string[]>();
-    Object.keys(operAddressHierarchy).forEach(provinceName => {
-      const cities = Object.keys(operAddressHierarchy[provinceName].cities).sort();
-      cache.set(provinceName, cities);
-    });
-    return cache;
-  }, [operAddressHierarchy]);
-
-  /**
-   * 缓存区县列表（按省份+城市分组）
-   */
-  const districtsByCityCache = useMemo(() => {
-    const cache = new Map<string, string[]>();
-    Object.keys(operAddressHierarchy).forEach(provinceName => {
-      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
-        const key = `${provinceName}-${cityName}`;
-        const districts = Object.keys(operAddressHierarchy[provinceName].cities[cityName].districts).sort();
-        cache.set(key, districts);
-      });
-    });
-    return cache;
-  }, [operAddressHierarchy]);
-
-  /**
-   * 根据省份获取城市列表（使用缓存）
-   */
-  const getOperCitiesByProvince = (provinceName: string): string[] => {
-    return citiesByProvinceCache.get(provinceName) || [];
-  };
-
-  /**
-   * 根据省份和城市获取区县列表（使用缓存）
-   */
-  const getOperDistrictsByCity = (provinceName: string, cityName: string): string[] => {
-    const key = `${provinceName}-${cityName}`;
-    return districtsByCityCache.get(key) || [];
-  };
-
-  /**
-   * 缓存地址编码（优化性能）
-   */
-  const provinceCodeCache = useMemo(() => {
-    const cache = new Map<string, string>();
-    Object.keys(operAddressHierarchy).forEach(provinceName => {
-      cache.set(provinceName, operAddressHierarchy[provinceName].code || '');
-    });
-    return cache;
-  }, [operAddressHierarchy]);
-
-  const cityCodeCache = useMemo(() => {
-    const cache = new Map<string, string>();
-    Object.keys(operAddressHierarchy).forEach(provinceName => {
-      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
-        const key = `${provinceName}-${cityName}`;
-        cache.set(key, operAddressHierarchy[provinceName].cities[cityName].code || '');
-      });
-    });
-    return cache;
-  }, [operAddressHierarchy]);
-
-  const districtCodeCache = useMemo(() => {
-    const cache = new Map<string, string>();
-    Object.keys(operAddressHierarchy).forEach(provinceName => {
-      Object.keys(operAddressHierarchy[provinceName].cities).forEach(cityName => {
-        Object.keys(operAddressHierarchy[provinceName].cities[cityName].districts).forEach(districtName => {
-          const key = `${provinceName}-${cityName}-${districtName}`;
-          cache.set(key, operAddressHierarchy[provinceName].cities[cityName].districts[districtName] || '');
-        });
-      });
-    });
-    return cache;
-  }, [operAddressHierarchy]);
-
-  /**
-   * 获取地址编码（使用缓存优化）
-   */
-  const getOperProvinceCode = useCallback((provinceName: string): string => {
-    return provinceCodeCache.get(provinceName) || '';
-  }, [provinceCodeCache]);
-
-  const getOperCityCode = useCallback((provinceName: string, cityName: string): string => {
-    const key = `${provinceName}-${cityName}`;
-    return cityCodeCache.get(key) || '';
-  }, [cityCodeCache]);
-
-  const getOperDistrictCode = useCallback((provinceName: string, cityName: string, districtName: string): string => {
-    const key = `${provinceName}-${cityName}-${districtName}`;
-    return districtCodeCache.get(key) || '';
-  }, [districtCodeCache]);
-
-  /**
-   * 批量修改地址
-   */
-  const handleBatchEdit = useCallback(() => {
-    if (selectedRows.size === 0) {
-      setError('请先选择要修改的数据');
+  const handleExport = async (exportType: 'all' | 'filtered' | 'selected') => {
+    // 导出全部数据（其他类型由 ResultsTable 组件处理）
+    if (exportType !== 'all') {
       return;
     }
 
-    if (!batchProvince) {
-      setError('批量修改时，必须至少选择省份');
+    if (results.length === 0) {
+      setError('没有可导出的数据');
       return;
-    }
-
-    setResults(prevResults => {
-      const newResults = [...prevResults];
-      const newModifiedRows = new Set(modifiedRows);
-
-      // 批量更新所有选中的行
-      selectedRows.forEach(rowIndex => {
-        const result = newResults[rowIndex];
-        if (!result) return;
-
-        const newOutput = { ...result.output };
-        const newInput = { ...result.input };
-
-        // 更新省份
-        const provinceCode = getOperProvinceCode(batchProvince);
-        newOutput.oper_province_name = batchProvince;
-        newOutput.oper_province_code = provinceCode;
-        newInput.省份名称 = batchProvince;
-        newInput.省份编码 = provinceCode;
-
-        // 如果设置了城市，更新城市
-        if (batchCity) {
-          const cityCode = getOperCityCode(batchProvince, batchCity);
-          newOutput.oper_city_name = batchCity;
-          newOutput.oper_city_code = cityCode;
-          newInput.地市名称 = batchCity;
-          newInput.地市编码 = cityCode;
-
-          // 如果设置了区县，更新区县
-          if (batchDistrict) {
-            const districtCode = getOperDistrictCode(batchProvince, batchCity, batchDistrict);
-            newOutput.oper_district_name = batchDistrict;
-            newOutput.oper_district_code = districtCode;
-            newInput.区县名称 = batchDistrict;
-            newInput.区县编码 = districtCode;
-          } else {
-            // 清空区县
-            newOutput.oper_district_name = '';
-            newOutput.oper_district_code = '';
-            newInput.区县名称 = '';
-            newInput.区县编码 = '';
-          }
-        } else {
-          // 清空城市和区县
-          newOutput.oper_city_name = '';
-          newOutput.oper_city_code = '';
-          newOutput.oper_district_name = '';
-          newOutput.oper_district_code = '';
-          newInput.地市名称 = '';
-          newInput.地市编码 = '';
-          newInput.区县名称 = '';
-          newInput.区县编码 = '';
-        }
-
-        newResults[rowIndex] = {
-          ...result,
-          input: newInput,
-          output: newOutput,
-        };
-
-        // 记录修改
-        newModifiedRows.add(rowIndex);
-      });
-
-      setModifiedRows(newModifiedRows);
-      return newResults;
-    });
-
-    // 清空批量修改状态
-    setIsBatchEditMode(false);
-    setBatchProvince('');
-    setBatchCity('');
-    setBatchDistrict('');
-  }, [selectedRows, batchProvince, batchCity, batchDistrict, getOperProvinceCode, getOperCityCode, getOperDistrictCode, modifiedRows]);
-
-  /**
-   * 获取所有唯一的省份列表（骏伯）
-   */
-  const uniqueProvinces = useMemo(() => {
-    const provinces = new Set<string>();
-    results.forEach(result => {
-      if (result.output.junbo_province_name) {
-        provinces.add(result.output.junbo_province_name);
-      }
-    });
-    return Array.from(provinces).sort();
-  }, [results]);
-
-  /**
-   * 获取所有唯一的城市列表（根据选中的省份筛选）（骏伯）
-   */
-  const uniqueCities = useMemo(() => {
-    const cities = new Set<string>();
-    results.forEach(result => {
-      if (result.output.junbo_city_name) {
-        // 如果选择了省份，只显示该省份下的城市
-        if (filterProvince === 'all' || result.output.junbo_province_name === filterProvince) {
-          cities.add(result.output.junbo_city_name);
-        }
-      }
-    });
-    return Array.from(cities).sort();
-  }, [results, filterProvince]);
-
-
-
-  /**
-   * 将后端返回的 confidence 转换为前端显示的状态（三个状态）
-   * 使用 useCallback 优化，避免重复创建函数
-   */
-  const normalizeConfidence = useCallback((confidence: string): string => {
-    // high 和 medium 都统一为 'high'，显示为"精准匹配"
-    if (confidence === 'high' || confidence === 'medium') {
-      return 'high';
-    }
-    // low 保持为 'low'，显示为"低置信度"
-    if (confidence === 'low') {
-      return 'low';
-    }
-    // none 保持为 'none'，显示为"未匹配"
-    return 'none';
-  }, []);
-
-  /**
-   * 筛选后的数据（包含搜索功能）
-   */
-  const filteredResults = useMemo(() => {
-    return results.filter(result => {
-      // 搜索筛选（支持搜索省份、城市、区县名称）
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
-        const matchProvince = result.output.junbo_province_name?.toLowerCase().includes(query) ||
-                             result.output.oper_province_name?.toLowerCase().includes(query);
-        const matchCity = result.output.junbo_city_name?.toLowerCase().includes(query) ||
-                         result.output.oper_city_name?.toLowerCase().includes(query);
-        const matchDistrict = result.output.junbo_district_name?.toLowerCase().includes(query) ||
-                             result.output.oper_district_name?.toLowerCase().includes(query);
-        
-        if (!matchProvince && !matchCity && !matchDistrict) {
-          return false;
-        }
-      }
-      
-      // 匹配状态筛选（使用归一化后的状态）
-      if (filterConfidence !== 'all') {
-        const normalizedConfidence = normalizeConfidence(result.output.confidence);
-        const normalizedFilter = normalizeConfidence(filterConfidence);
-        if (normalizedConfidence !== normalizedFilter) {
-          return false;
-        }
-      }
-      
-      // 省份筛选
-      if (filterProvince !== 'all' && result.output.junbo_province_name !== filterProvince) {
-        return false;
-      }
-      
-      // 城市筛选
-      if (filterCity !== 'all' && result.output.junbo_city_name !== filterCity) {
-        return false;
-      }
-      
-      return true;
-    });
-  }, [results, searchQuery, filterConfidence, filterProvince, filterCity, normalizeConfidence]);
-
-  /**
-   * 分页数据
-   */
-  const paginatedResults = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    return filteredResults.slice(startIndex, endIndex);
-  }, [filteredResults, currentPage]);
-
-  /**
-   * 总页数
-   */
-  const totalPages = useMemo(() => {
-    return Math.ceil(filteredResults.length / ITEMS_PER_PAGE);
-  }, [filteredResults]);
-
-  /**
-   * 导出结果为 Excel（支持导出全部、筛选后或选中数据）
-   * 使用 useCallback 优化，避免重复创建函数
-   */
-  const handleExport = useCallback(async (exportType: 'all' | 'filtered' | 'selected' = 'all') => {
-    let dataToExport: AddressMatchResult[] = [];
-    
-    if (exportType === 'selected' && selectedRows.size > 0) {
-      // 导出选中的数据
-      dataToExport = Array.from(selectedRows)
-        .map(index => results[index])
-        .filter(Boolean);
-    } else if (exportType === 'filtered') {
-      // 导出筛选后的数据
-      dataToExport = filteredResults;
-    } else {
-      // 导出全部数据
-      dataToExport = results;
-    }
-
-    if (dataToExport.length === 0) {
-      setError(`没有可导出的数据${exportType === 'selected' ? '（请先选择数据）' : ''}`);
-      return;
-    }
-
-    // 如果有修改，给用户提示
-    if (modifiedRows.size > 0) {
-      const confirmed = window.confirm(
-        `您已修改了 ${modifiedRows.size} 条记录，这些修改将包含在导出的文件中。是否继续导出？`
-      );
-      if (!confirmed) {
-        return;
-      }
     }
 
     try {
@@ -671,7 +138,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ results: dataToExport }),
+        body: JSON.stringify({ results }),
       });
 
       if (!response.ok) {
@@ -682,8 +149,7 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const exportTypeName = exportType === 'selected' ? '选中' : exportType === 'filtered' ? '筛选后' : '全部';
-      a.download = `address-mapping-result-${exportTypeName}-${Date.now()}.xlsx`;
+      a.download = `address-mapping-result-全部-${Date.now()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -691,272 +157,61 @@ export default function Home() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '导出失败');
     }
-  }, [results, filteredResults, selectedRows, modifiedRows]);
+  };
 
   /**
-   * 全选/取消全选当前页（使用 useCallback 优化）
+   * 将后端返回的 confidence 转换为前端显示的状态
    */
-  const handleSelectAll = useCallback(() => {
-    if (selectedRows.size === paginatedResults.length) {
-      // 取消全选
-      setSelectedRows(new Set());
-    } else {
-      // 全选当前页
-      const newSet = new Set<number>();
-      paginatedResults.forEach((result, index) => {
-        const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
-        const actualRowIndex = filteredIndex < filteredResults.length 
-          ? results.findIndex(r => r === filteredResults[filteredIndex])
-          : -1;
-        if (actualRowIndex >= 0) {
-          newSet.add(actualRowIndex);
-        }
-      });
-      setSelectedRows(newSet);
+  const normalizeConfidence = (confidence: string): string => {
+    if (confidence === 'high' || confidence === 'medium') {
+      return 'high';
     }
-  }, [selectedRows.size, paginatedResults, currentPage, filteredResults, results]);
-
-  /**
-   * 快捷键支持
-   */
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + F: 聚焦搜索框
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        const searchInput = document.querySelector('input[type="text"][placeholder*="搜索"]') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.focus();
-          searchInput.select();
-        }
-      }
-      
-      // Ctrl/Cmd + S: 导出全部数据
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        if (results.length > 0) {
-          handleExport('all');
-        }
-      }
-      
-      // Ctrl/Cmd + A: 全选（仅在选择模式下）
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a' && isSelectMode) {
-        e.preventDefault();
-        handleSelectAll();
-      }
-      
-      // Escape: 退出选择模式
-      if (e.key === 'Escape' && isSelectMode) {
-        handleClearSelection();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [results.length, isSelectMode, handleExport, handleSelectAll, handleClearSelection]);
-
-  /**
-   * 当省份变化时，检查城市筛选是否有效
-   */
-  useEffect(() => {
-    if (filterCity !== 'all' && filterProvince !== 'all') {
-      // 检查选中的城市是否在当前省份下
-      const cityExists = uniqueCities.includes(filterCity);
-      if (!cityExists) {
-        setFilterCity('all');
-      }
+    if (confidence === 'low') {
+      return 'low';
     }
-  }, [filterProvince, uniqueCities, filterCity]);
-
-  /**
-   * 处理筛选变化
-   */
-  const handleFilterChange = (type: 'confidence' | 'province' | 'city', value: string) => {
-    if (type === 'confidence') {
-      setFilterConfidence(value);
-    } else if (type === 'province') {
-      setFilterProvince(value);
-      setFilterCity('all'); // 重置城市筛选
-    } else if (type === 'city') {
-      setFilterCity(value);
-    }
-    setCurrentPage(1); // 重置到第一页
+    return 'none';
   };
 
-  /**
-   * 处理搜索变化
-   */
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-    setCurrentPage(1); // 重置到第一页
-  };
+  // 如果当前在结果页面，显示结果表格
+  if (currentPage === 'results' && results.length > 0) {
+    return (
+      <main className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="flex-shrink-0 p-4 bg-white border-b border-gray-200">
+          <div className="max-w-full mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setCurrentPage('upload')}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  返回导入
+                </button>
+                <h1 className="text-xl font-bold text-gray-900">地址映射转换结果</h1>
+              </div>
+            </div>
+          </div>
+        </div>
 
-  /**
-   * 重置所有筛选
-   */
-  const handleResetFilters = () => {
-    setFilterConfidence('all');
-    setFilterProvince('all');
-    setFilterCity('all');
-    setSearchQuery('');
-    setCurrentPage(1);
-  };
+        {/* 结果表格区域 - 占据剩余空间，可滚动 */}
+        <div className="flex-1 overflow-hidden p-4">
+          <div className="h-full max-w-full mx-auto">
+            <ResultsTable
+              results={results}
+              originalOperInputs={originalOperInputs}
+              onResultsChange={setResults}
+              onExport={handleExport}
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
-  /**
-   * 检查是否有筛选条件
-   */
-  const hasActiveFilters = filterConfidence !== 'all' || filterProvince !== 'all' || filterCity !== 'all' || searchQuery.trim() !== '';
-
-  /**
-   * 处理局方地址修改（使用 useCallback 优化）
-   */
-  const handleAddressChange = useCallback((
-    rowIndex: number,
-    type: 'province' | 'city' | 'district',
-    value: string
-  ) => {
-    setResults(prevResults => {
-      const newResults = [...prevResults];
-      const result = newResults[rowIndex];
-      
-      if (!result) return prevResults;
-
-      const newOutput = { ...result.output };
-
-      if (type === 'province') {
-        // 修改省份
-        newOutput.oper_province_name = value;
-        const provinceCode = getOperProvinceCode(value);
-        newOutput.oper_province_code = provinceCode; // 更新省份编码
-        
-        // 清空城市和区县
-        newOutput.oper_city_name = '';
-        newOutput.oper_city_code = '';
-        newOutput.oper_district_name = '';
-        newOutput.oper_district_code = '';
-        
-        // 同时更新 input 数据
-        const newInput = { ...result.input };
-        newInput.省份名称 = value;
-        newInput.省份编码 = provinceCode;
-        newInput.地市名称 = '';
-        newInput.地市编码 = '';
-        newInput.区县名称 = '';
-        newInput.区县编码 = '';
-        
-        newResults[rowIndex] = {
-          ...result,
-          input: newInput,
-          output: newOutput,
-        };
-      } else if (type === 'city') {
-        // 修改城市
-        const provinceName = result.output.oper_province_name || '';
-        newOutput.oper_city_name = value;
-        const cityCode = getOperCityCode(provinceName, value);
-        newOutput.oper_city_code = cityCode; // 更新城市编码
-        
-        // 清空区县
-        newOutput.oper_district_name = '';
-        newOutput.oper_district_code = '';
-        
-        // 同时更新 input 数据
-        const newInput = { ...result.input };
-        newInput.地市名称 = value;
-        newInput.地市编码 = cityCode;
-        newInput.区县名称 = '';
-        newInput.区县编码 = '';
-        
-        newResults[rowIndex] = {
-          ...result,
-          input: newInput,
-          output: newOutput,
-        };
-      } else if (type === 'district') {
-        // 修改区县
-        const provinceName = result.output.oper_province_name || '';
-        const cityName = result.output.oper_city_name || '';
-        newOutput.oper_district_name = value;
-        const districtCode = getOperDistrictCode(provinceName, cityName, value);
-        newOutput.oper_district_code = districtCode; // 更新区县编码
-        
-        // 同时更新 input 数据
-        const newInput = { ...result.input };
-        newInput.区县名称 = value;
-        newInput.区县编码 = districtCode;
-        
-        newResults[rowIndex] = {
-          ...result,
-          input: newInput,
-          output: newOutput,
-        };
-      }
-
-      // 记录修改的行
-      setModifiedRows(prev => new Set(prev).add(rowIndex));
-
-      return newResults;
-    });
-  }, [getOperProvinceCode, getOperCityCode, getOperDistrictCode]);
-
-  /**
-   * 获取匹配状态徽章（三个状态：精准匹配、低置信度、未匹配）
-   */
-  const getMatchStatusBadge = (confidence: string) => {
-    const normalized = normalizeConfidence(confidence);
-    if (normalized === 'high') {
-      return <Badge className="bg-green-500">精准匹配</Badge>;
-    } else if (normalized === 'low') {
-      return <Badge className="bg-orange-500">低置信度</Badge>;
-    } else {
-      return <Badge variant="destructive">未匹配</Badge>;
-    }
-  };
-
-  /**
-   * 判断局方和骏伯地址是否匹配（用于显示颜色标识）
-   */
-  const isAddressMatch = (junboName: string, operName: string): boolean => {
-    if (!junboName || !operName) return false;
-    return junboName.trim() === operName.trim();
-  };
-
-  /**
-   * 获取地址匹配的样式类名
-   */
-  const getAddressMatchClassName = (junboName: string, operName: string): string => {
-    if (isAddressMatch(junboName, operName)) {
-      // 匹配：淡绿色背景
-      return 'bg-green-50';
-    } else if (operName) {
-      // 不匹配且有局方地址：淡橙色背景（警告色，不要太鲜艳）
-      return 'bg-orange-50';
-    }
-    // 没有局方地址：淡红色背景（不要太鲜艳）
-    return 'bg-red-50';
-  };
-
-  /**
-   * 匹配状态映射（中文 -> 英文，三个状态）
-   */
-  const confidenceMap: Record<string, string> = {
-    '精准匹配': 'high',
-    '低置信度': 'low',
-    '未匹配': 'none',
-  };
-
-  /**
-   * 匹配状态反向映射（英文 -> 中文，三个状态）
-   */
-  const confidenceReverseMap: Record<string, string> = {
-    'high': '精准匹配',
-    'low': '低置信度',
-    'none': '未匹配',
-  };
-
+  // 导入页面
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-6 lg:p-8">
-      <div className="max-w-[80%] mx-auto">
+        <div className="max-w-4xl mx-auto">
         {/* 标题区域 */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">地址映射转换工具</h1>
@@ -964,7 +219,7 @@ export default function Home() {
         </div>
 
         {/* 主要操作区域 */}
-        <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8 mb-6 md:mb-8">
+          <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
             {/* 文件上传区域 */}
             <div className="flex-1 w-full">
@@ -1018,29 +273,6 @@ export default function Home() {
                   </>
                 )}
               </button>
-
-              {results.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => handleExport('all')}
-                    className="flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-                    title="导出全部数据 (Ctrl+S)"
-                  >
-                    <Download className="w-4 h-4" />
-                    导出全部
-                  </button>
-                  {filteredResults.length !== results.length && (
-                    <button
-                      onClick={() => handleExport('filtered')}
-                      className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-green-700 bg-green-50 border border-green-300 rounded-lg hover:bg-green-100 transition-colors"
-                      title="导出筛选后的数据"
-                    >
-                      <Download className="w-3 h-3" />
-                      导出筛选
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1052,554 +284,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* 成功提示和统计卡片 */}
-          {results.length > 0 && !error && (() => {
-            const matchedCount = results.filter(r => normalizeConfidence(r.output.confidence) !== 'none').length;
-            const highConfidenceCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'high').length;
-            const lowConfidenceCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'low').length;
-            const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
-            const matchRate = results.length > 0 ? ((matchedCount / results.length) * 100).toFixed(1) : '0';
-            
-            return (
-              <div className="mb-4 space-y-3">
-                {/* 成功提示 */}
-                <div className="flex items-center gap-2 p-4 text-green-700 bg-green-100 rounded-lg">
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                  <span className="font-medium">成功处理 {results.length} 条骏伯地址数据</span>
-                </div>
-                
-                {/* 统计卡片 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">匹配率</div>
-                    <div className="text-2xl font-bold text-blue-600">{matchRate}%</div>
-                    <div className="text-xs text-gray-400 mt-1">{matchedCount} / {results.length}</div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg border border-green-200 p-4 shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">精准匹配</div>
-                    <div className="text-2xl font-bold text-green-600">{highConfidenceCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {results.length > 0 ? ((highConfidenceCount / results.length) * 100).toFixed(1) : '0'}%
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg border border-orange-200 p-4 shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">低置信度</div>
-                    <div className="text-2xl font-bold text-orange-600">{lowConfidenceCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {results.length > 0 ? ((lowConfidenceCount / results.length) * 100).toFixed(1) : '0'}%
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white rounded-lg border border-red-200 p-4 shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">未匹配</div>
-                    <div className="text-2xl font-bold text-red-600">{unmatchedCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {results.length > 0 ? ((unmatchedCount / results.length) * 100).toFixed(1) : '0'}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* 结果展示区域 */}
-        {results.length > 0 && (
-          <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8">
-            <div className="mb-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">
-                  转换结果（显示所有骏伯地址库条目）
-                </h2>
-              </div>
-              
-              {/* 筛选控件区域 */}
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 md:p-5 border border-gray-200 shadow-sm">
-                <div className="flex flex-col gap-4">
-                  {/* 筛选标题栏 */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Filter className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm font-semibold text-gray-800">筛选条件</span>
-                      {hasActiveFilters && (
-                        <span className="px-2.5 py-1 text-xs font-medium bg-blue-500 text-white rounded-full shadow-sm">
-                          已筛选
-                        </span>
-                      )}
-                    </div>
-                    {hasActiveFilters && (
-                      <button
-                        onClick={handleResetFilters}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-white rounded-md transition-all border border-gray-300 hover:border-gray-400 hover:shadow-sm"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        清空筛选
-                      </button>
-                    )}
-                  </div>
-
-                  {/* 搜索框 */}
-                  <div className="mb-4">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 block">搜索地址</label>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input
-                        type="text"
-                        placeholder="搜索省份、城市或区县名称..."
-                        value={searchQuery}
-                        onChange={(e) => handleSearchChange(e.target.value)}
-                        className="pl-10 w-full"
-                      />
-                      {searchQuery && (
-                        <button
-                          onClick={() => handleSearchChange('')}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 筛选控件 */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">匹配状态</label>
-                      <SearchableSelect
-                        value={filterConfidence === 'all' ? '' : (confidenceReverseMap[filterConfidence] || '')}
-                        onValueChange={(value) => {
-                          const mappedValue = value ? confidenceMap[value] || value : 'all';
-                          handleFilterChange('confidence', mappedValue);
-                        }}
-                        options={['精准匹配', '低置信度', '未匹配']}
-                        placeholder="全部状态"
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Junbo 省份</label>
-                      <SearchableSelect
-                        value={filterProvince === 'all' ? '' : filterProvince}
-                        onValueChange={(value) => handleFilterChange('province', value || 'all')}
-                        options={uniqueProvinces}
-                        placeholder="全部省份"
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Junbo 地市</label>
-                      <SearchableSelect
-                        value={filterCity === 'all' ? '' : filterCity}
-                        onValueChange={(value) => handleFilterChange('city', value || 'all')}
-                        options={uniqueCities}
-                        placeholder="全部地市"
-                        disabled={filterProvince === 'all'}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 统计信息和快速操作 */}
-            <div className="mb-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="text-sm text-gray-600">
-                  共 <span className="font-semibold text-gray-900">{filteredResults.length}</span> 条数据（筛选后），
-                  共 <span className="font-semibold text-gray-900">{results.length}</span> 条（全部）
-                  {filteredResults.length !== results.length && (
-                    <span className="ml-2 text-blue-600">已应用筛选条件</span>
-                  )}
-                </div>
-                
-                {/* 快速跳转按钮 */}
-                {(() => {
-                  const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
-                  const isNotFilteringUnmatched = filterConfidence === 'all' || normalizeConfidence(filterConfidence) !== 'none';
-                  if (unmatchedCount > 0 && isNotFilteringUnmatched) {
-                    return (
-                      <button
-                        onClick={() => {
-                          setFilterConfidence('none');
-                          setFilterProvince('all');
-                          setFilterCity('all');
-                          setSearchQuery('');
-                          setCurrentPage(1);
-                        }}
-                        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
-                      >
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        跳转到未匹配项 ({unmatchedCount})
-                      </button>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-              
-              {/* 批量操作工具栏 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setIsSelectMode(!isSelectMode)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-md hover:bg-blue-50 transition-colors"
-                    >
-                      {isSelectMode ? (
-                        <>
-                          <CheckSquare className="w-4 h-4" />
-                          退出选择
-                        </>
-                      ) : (
-                        <>
-                          <Square className="w-4 h-4" />
-                          批量选择
-                        </>
-                      )}
-                    </button>
-                    
-                    {isSelectMode && (
-                      <>
-                        <span className="text-sm text-gray-600">
-                          已选择 <span className="font-semibold text-blue-700">{selectedRows.size}</span> 项
-                        </span>
-                        <button
-                          onClick={handleSelectAll}
-                          className="text-sm text-blue-600 hover:text-blue-700 underline"
-                        >
-                          {selectedRows.size === paginatedResults.length ? '取消全选' : '全选当前页'}
-                        </button>
-                        {selectedRows.size > 0 && (
-                          <>
-                            <button
-                              onClick={handleClearSelection}
-                              className="text-sm text-gray-500 hover:text-gray-700"
-                            >
-                              清空选择
-                            </button>
-                            <button
-                              onClick={() => setIsBatchEditMode(!isBatchEditMode)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-300 rounded-md hover:bg-orange-100 transition-colors"
-                            >
-                              {isBatchEditMode ? '取消修改' : '批量修改'}
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  
-                  {selectedRows.size > 0 && (
-                    <button
-                      onClick={() => handleExport('selected')}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                      导出选中 ({selectedRows.size})
-                    </button>
-                  )}
-                </div>
-
-                {/* 批量修改面板 */}
-                {isBatchEditMode && selectedRows.size > 0 && (
-                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="mb-3">
-                      <h3 className="text-sm font-semibold text-gray-800 mb-1">
-                        批量修改选中 {selectedRows.size} 项的局方地址
-                      </h3>
-                      <p className="text-xs text-gray-500">
-                        选择省份、城市、区县后点击"应用修改"按钮
-                      </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-700">批量设置省份</label>
-                        <SearchableSelect
-                          value={batchProvince}
-                          onValueChange={(value) => {
-                            setBatchProvince(value);
-                            // 清空城市和区县（因为省份变化了）
-                            setBatchCity('');
-                            setBatchDistrict('');
-                          }}
-                          options={operProvinceList}
-                          placeholder="选择省份"
-                          className="w-full"
-                        />
-                      </div>
-                      
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-700">批量设置城市</label>
-                        <SearchableSelect
-                          value={batchCity}
-                          onValueChange={(value) => {
-                            setBatchCity(value);
-                            // 清空区县（因为城市变化了）
-                            setBatchDistrict('');
-                          }}
-                          options={batchProvince ? getOperCitiesByProvince(batchProvince) : []}
-                          placeholder={batchProvince ? "选择城市" : "请先选择省份"}
-                          disabled={!batchProvince}
-                          className="w-full"
-                        />
-                      </div>
-                      
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-700">批量设置区县</label>
-                        <SearchableSelect
-                          value={batchDistrict}
-                          onValueChange={setBatchDistrict}
-                          options={batchProvince && batchCity ? getOperDistrictsByCity(batchProvince, batchCity) : []}
-                          placeholder={batchProvince && batchCity ? "选择区县" : "请先选择城市"}
-                          disabled={!batchProvince || !batchCity}
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleBatchEdit}
-                        disabled={!batchProvince}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        应用修改
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsBatchEditMode(false);
-                          setBatchProvince('');
-                          setBatchCity('');
-                          setBatchDistrict('');
-                        }}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 表格 */}
-            <div className="overflow-x-auto overflow-y-visible mb-6 -mx-2 md:-mx-4">
-              <div className="inline-block min-w-full align-middle px-2 md:px-4">
-                <table className="w-full text-sm text-left text-gray-700">
-                  <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                    <tr>
-                      {isSelectMode && (
-                        <th className="px-3 py-3 w-12">
-                          <button
-                            onClick={handleSelectAll}
-                            className="flex items-center justify-center"
-                            title={selectedRows.size === paginatedResults.length ? '取消全选' : '全选当前页'}
-                          >
-                            {selectedRows.size === paginatedResults.length ? (
-                              <CheckSquare className="w-4 h-4 text-blue-600" />
-                            ) : (
-                              <Square className="w-4 h-4 text-gray-400" />
-                            )}
-                          </button>
-                        </th>
-                      )}
-                      <th className="px-3 py-3 w-16">序号</th>
-                      <th className="px-3 py-3 min-w-[120px]">Junbo 省份</th>
-                      <th className="px-3 py-3 min-w-[140px]">局方省份</th>
-                      <th className="px-3 py-3 min-w-[120px]">Junbo 地市</th>
-                      <th className="px-3 py-3 min-w-[140px]">局方地市</th>
-                      <th className="px-3 py-3 min-w-[120px]">Junbo 区县</th>
-                      <th className="px-3 py-3 min-w-[140px]">局方区县</th>
-                      <th className="px-3 py-3 w-24">匹配状态</th>
-                    </tr>
-                  </thead>
-                <tbody>
-                  {paginatedResults.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
-                        <div className="flex flex-col items-center justify-center">
-                          <Filter className="w-12 h-12 text-gray-300 mb-3" />
-                          <p className="text-gray-500 font-medium mb-1">没有找到匹配的数据</p>
-                          <p className="text-sm text-gray-400">
-                            {hasActiveFilters 
-                              ? '请尝试调整筛选条件或搜索关键词'
-                              : '暂无数据'}
-                          </p>
-                          {hasActiveFilters && (
-                            <button
-                              onClick={handleResetFilters}
-                              className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
-                            >
-                              清空所有筛选条件
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedResults.map((result, index) => {
-                    const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                    const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
-                    
-                    // 优化：建立索引映射缓存，避免重复 findIndex
-                    // 注意：这里仍然需要 findIndex，但可以通过建立映射表进一步优化
-                    const actualRowIndex = filteredIndex < filteredResults.length 
-                      ? results.findIndex(r => r === filteredResults[filteredIndex])
-                      : -1;
-                    
-                    const isModified = actualRowIndex >= 0 && modifiedRows.has(actualRowIndex);
-                    const currentProvince = result.output.oper_province_name || '';
-                    const currentCity = result.output.oper_city_name || '';
-                    const currentDistrict = result.output.oper_district_name || '';
-                    
-                    // 获取可用的选项列表（使用缓存的函数）
-                    const availableCities = currentProvince ? getOperCitiesByProvince(currentProvince) : [];
-                    const availableDistricts = currentProvince && currentCity ? getOperDistrictsByCity(currentProvince, currentCity) : [];
-
-                    const isSelected = actualRowIndex >= 0 && selectedRows.has(actualRowIndex);
-                    
-                    return (
-                      <tr 
-                        key={`${currentPage}-${globalIndex}-${result.output.junbo_province_name}-${result.output.junbo_city_name}-${result.output.junbo_district_name}`} 
-                        className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''} ${isSelected ? 'bg-blue-50' : ''}`}
-                      >
-                        {isSelectMode && (
-                          <td className="px-3 py-3">
-                            <button
-                              onClick={() => handleSelectRow(actualRowIndex)}
-                              className="flex items-center justify-center"
-                            >
-                              {isSelected ? (
-                                <CheckSquare className="w-4 h-4 text-blue-600" />
-                              ) : (
-                                <Square className="w-4 h-4 text-gray-400" />
-                              )}
-                            </button>
-                          </td>
-                        )}
-                        <td className="px-3 py-3">{globalIndex}</td>
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
-                          {result.output.junbo_province_name || '-'}
-                        </td>
-                        
-                        {/* 局方省份 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
-                          <SearchableSelect
-                            value={currentProvince}
-                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
-                            options={operProvinceList}
-                            placeholder="选择省份"
-                            className="w-full"
-                          />
-                        </td>
-                        
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
-                          {result.output.junbo_city_name || '-'}
-                        </td>
-                        
-                        {/* 局方城市 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
-                          <SearchableSelect
-                            value={currentCity}
-                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
-                            options={availableCities}
-                            placeholder={currentProvince ? "选择城市" : "请先选择省份"}
-                            disabled={!currentProvince}
-                            className="w-full"
-                          />
-                        </td>
-                        
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
-                          {result.output.junbo_district_name || '-'}
-                        </td>
-                        
-                        {/* 局方区县 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
-                          <SearchableSelect
-                            value={currentDistrict}
-                            onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}
-                            options={availableDistricts}
-                            placeholder={currentProvince && currentCity ? "选择区县" : "请先选择城市"}
-                            disabled={!currentProvince || !currentCity}
-                            className="w-full"
-                          />
-                        </td>
-                        
-                        <td className="px-3 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
-                      </tr>
-                    );
-                  })
-                  )}
-                </tbody>
-              </table>
-              </div>
-            </div>
-
-            {/* 分页控件 */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  显示第 {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filteredResults.length)} 条，共 {filteredResults.length} 条
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    上一页
-                  </button>
-                  
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      let pageNum: number;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-                      
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            currentPage === pageNum
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    下一页
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+          {/* 成功提示 */}
+          {results.length > 0 && !error && (
+            <div className="flex items-center gap-2 p-4 text-green-700 bg-green-100 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <span className="font-medium">成功处理 {results.length} 条骏伯地址数据，已自动跳转到结果页面</span>
+          </div>
             )}
           </div>
-        )}
         </div>
       </main>
   );

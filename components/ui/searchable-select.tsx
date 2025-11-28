@@ -184,13 +184,37 @@ export function SearchableSelect({
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [open, filteredOptions, focusedIndex, handleSelect])
 
+  // 从 className 中提取高度和宽度相关的类
+  const hasHeight = className?.includes('h-');
+  const hasWidth = className?.includes('w-');
+  const hasMinWidth = className?.includes('min-w-');
+  const hasMaxWidth = className?.includes('max-w-');
+  
+  // 分离样式类：宽度和高度类应用到外层，其他类应用到内层
+  const widthHeightClasses = className?.split(' ').filter(cls => 
+    cls.includes('w-') || cls.includes('h-') || cls.includes('min-w-') || cls.includes('max-w-')
+  ).join(' ') || '';
+  
+  const otherClasses = className?.split(' ').filter(cls => 
+    !cls.includes('w-') && !cls.includes('h-') && !cls.includes('min-w-') && !cls.includes('max-w-')
+  ).join(' ') || '';
+  
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div ref={containerRef} className={cn("relative", widthHeightClasses)}>
       <div
         className={cn(
-          "border-input data-[placeholder]:text-muted-foreground focus-visible:border-blue-500 focus-visible:ring-blue-500/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-xs transition-all outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 min-h-[36px]",
-          open && "ring-[3px] ring-blue-500/20 border-blue-500 shadow-md",
-          !open && "hover:border-gray-400"
+          "border-input data-[placeholder]:text-muted-foreground focus-visible:border-blue-500 focus-visible:ring-blue-500/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-xs transition-all outline-none focus-visible:ring-[3px]",
+          !hasHeight && "min-h-[28px]",
+          !hasWidth && !hasMinWidth && !hasMaxWidth && "w-full",
+          // 正常状态
+          !disabled && "bg-white dark:bg-input/30 dark:hover:bg-input/50",
+          // 禁用状态
+          disabled && "bg-gray-100 border-gray-300 cursor-not-allowed",
+          // 打开状态
+          open && !disabled && "ring-[3px] ring-blue-500/20 border-blue-500 shadow-md",
+          // 悬停状态（仅非禁用）
+          !open && !disabled && "hover:border-gray-400",
+          otherClasses
         )}
         onClick={() => !disabled && setOpen(true)}
       >
@@ -206,22 +230,28 @@ export function SearchableSelect({
           onFocus={() => !disabled && setOpen(true)}
           placeholder={value ? undefined : placeholder}
           disabled={disabled}
-          className="flex-1 bg-transparent outline-none placeholder:text-gray-400 text-gray-900"
+          className={cn(
+            "flex-1 min-w-0 bg-transparent outline-none placeholder:text-gray-400 text-xs",
+            disabled ? "text-gray-400 cursor-not-allowed" : "text-gray-900"
+          )}
         />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
           {value && !disabled && (
             <button
               type="button"
               onClick={handleClear}
-              className="flex items-center justify-center rounded-sm hover:bg-accent p-0.5 transition-colors"
+              className="flex items-center justify-center rounded-sm hover:bg-gray-200 p-0.5 transition-colors"
               tabIndex={-1}
+              title="清空"
+              onMouseDown={(e) => e.preventDefault()}
             >
-              <XIcon className="size-3.5 text-muted-foreground hover:text-foreground" />
+              <XIcon className="w-3.5 h-3.5 text-gray-500 hover:text-gray-700" />
             </button>
           )}
           <ChevronDownIcon 
             className={cn(
-              "size-4 opacity-50 transition-transform",
+              "w-3.5 h-3.5 transition-transform flex-shrink-0",
+              disabled ? "text-gray-400" : "text-gray-500",
               open && "rotate-180"
             )} 
           />
@@ -240,7 +270,7 @@ export function SearchableSelect({
         >
           <div className="max-h-[300px] overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
                 未找到匹配项
               </div>
             ) : (
@@ -248,7 +278,7 @@ export function SearchableSelect({
                 <div
                   key={option}
                   className={cn(
-                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none transition-colors",
+                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1 pr-6 pl-2 text-xs outline-none transition-colors",
                     value === option && "bg-blue-50 text-blue-700 font-medium",
                     index === focusedIndex && !(value === option) && "bg-gray-100 text-gray-900",
                     !(value === option) && index !== focusedIndex && "hover:bg-gray-50 text-gray-700"
@@ -258,8 +288,8 @@ export function SearchableSelect({
                 >
                   <span className="flex-1">{option}</span>
                   {value === option && (
-                    <span className="absolute right-2 flex size-3.5 items-center justify-center">
-                      <CheckIcon className="size-4" />
+                    <span className="absolute right-2 flex size-3 items-center justify-center">
+                      <CheckIcon className="size-3" />
                     </span>
                   )}
                 </div>
