@@ -62,10 +62,16 @@ export async function POST(request: NextRequest) {
     // 批量匹配地址
     const results: AddressMatchResult[] = matcher.batchMatch(inputData);
 
-    // 返回匹配结果
-    return NextResponse.json<ApiResponse<AddressMatchResult[]>>({
+    // 返回匹配结果和原始输入数据（用于构建下拉选项）
+    return NextResponse.json<ApiResponse<{
+      results: AddressMatchResult[];
+      originalInputs: typeof inputData;
+    }>>({
       success: true,
-      data: results,
+      data: {
+        results,
+        originalInputs: inputData,
+      },
       message: `成功处理 ${results.length} 条地址数据`,
     });
   } catch (error) {

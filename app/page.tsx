@@ -39,8 +39,15 @@ interface OperAddressHierarchy {
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [results, setResults] = useState<AddressMatchResult[]>([]);
-  // 保存原始导入数据，用于构建下拉选项（不会变动）
-  const [originalResults, setOriginalResults] = useState<AddressMatchResult[]>([]);
+  // 保存原始上传的局方地址数据（用于构建下拉选项，包含所有未匹配的数据）
+  const [originalOperInputs, setOriginalOperInputs] = useState<Array<{
+    省份名称: string;
+    省份编码: string;
+    地市名称: string;
+    地市编码: string;
+    区县名称: string;
+    区县编码: string;
+  }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   
@@ -64,7 +71,7 @@ export default function Home() {
       setFile(selectedFile);
       setError('');
       setResults([]);
-      setOriginalResults([]);
+      setOriginalOperInputs([]);
       setModifiedRows(new Set()); // 清空修改记录
     }
   };
@@ -97,9 +104,17 @@ export default function Home() {
       }
 
       if (data.success && data.data) {
-        setResults(data.data);
-        // 保存原始导入数据（深拷贝）
-        setOriginalResults(JSON.parse(JSON.stringify(data.data)));
+        // 处理新的数据结构（包含 results 和 originalInputs）
+        const resultsData = Array.isArray(data.data) 
+          ? data.data 
+          : data.data.results || [];
+        const originalInputs = Array.isArray(data.data)
+          ? []
+          : data.data.originalInputs || [];
+        
+        setResults(resultsData);
+        // 保存原始上传的局方地址数据
+        setOriginalOperInputs(JSON.parse(JSON.stringify(originalInputs)));
         setModifiedRows(new Set()); // 清空修改记录
       } else {
         throw new Error('处理结果格式错误');
@@ -246,16 +261,14 @@ export default function Home() {
 
   /**
    * 构建局方地址三级联动层级结构（用于下拉选择）
-   * 从原始导入数据构建，确保选项列表不会变动
+   * 从原始上传的局方地址数据构建，确保所有未匹配的数据也能在下拉框中显示
    * 同时包含当前所有已选择的值（即使不在原始数据中）
    */
   const operAddressHierarchy = useMemo((): OperAddressHierarchy => {
     const hierarchy: OperAddressHierarchy = {};
 
-    // 首先从原始导入数据构建
-    originalResults.forEach(result => {
-      const { input } = result;
-      
+    // 首先从原始上传的局方地址数据构建（包含所有未匹配的数据）
+    originalOperInputs.forEach(input => {
       const provinceName = input.省份名称 || '';
       const provinceCode = input.省份编码 || '';
       const cityName = input.地市名称 || '';
@@ -319,7 +332,7 @@ export default function Home() {
     });
 
     return hierarchy;
-  }, [originalResults, results]);
+  }, [originalOperInputs, results]);
 
   /**
    * 获取所有唯一的局方省份列表
