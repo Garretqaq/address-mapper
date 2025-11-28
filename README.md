@@ -1,36 +1,171 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 地址映射转换工具 (Address Mapper)
 
-## Getting Started
+一个将局方地址快速转换为 Junbo 标准地址库的 Next.js 应用程序。
 
-First, run the development server:
+## 功能特性
+
+- 📤 **Excel 文件上传**: 支持 .xlsx 和 .xls 格式（上传局方地址数据）
+- 🔄 **自动地址匹配**: 以骏伯地址库为主，智能匹配局方地址
+- 📊 **完整展示**: 显示所有骏伯地址库条目，即使未匹配到局方地址也会显示
+- 📥 **结果导出**: 将转换结果导出为 Excel 文件
+- 📝 **模板下载**: 提供标准的 Excel 模板文件
+
+## 技术栈
+
+- **框架**: Next.js 16.0.5 (App Router)
+- **语言**: TypeScript
+- **样式**: Tailwind CSS V4
+- **UI 组件**: shadcn/ui
+- **Excel 处理**: xlsx
+- **地址解析**: zh-address-parse
+
+## 快速开始
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 运行开发服务器
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开浏览器访问 [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 构建生产版本
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## 使用说明
 
-To learn more about Next.js, take a look at the following resources:
+### 1. 准备 Excel 文件
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+您的 Excel 文件需要包含以下列（表头）**（局方地址数据）**：
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `省份名称` - 局方省份名称
+- `省份编码` - 局方省份编码
+- `地市名称` - 局方地市名称
+- `地市编码` - 局方地市编码
+- `区县名称` - 局方区县名称
+- `区县编码` - 局方区县编码
 
-## Deploy on Vercel
+您可以点击"下载模板"按钮获取标准模板。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. 上传文件
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. 点击上传区域或拖拽文件到上传区域
+2. 选择您准备好的 Excel 文件（包含局方地址数据）
+3. 点击"开始转换"按钮
+
+### 3. 查看结果
+
+转换完成后，系统会显示**所有骏伯地址库条目**的匹配结果表格，包含：
+
+- **骏伯地址库地址**（省份、地市、区县）- 完整显示所有条目
+- **匹配到的局方地址**（省份、地市、区县）- 如果匹配成功则显示，否则为空
+- **匹配状态**（精确匹配、模糊匹配、低置信度、未匹配）
+
+**注意**：系统会显示所有骏伯地址库的条目，即使没有匹配到局方地址也会显示（局方地址列为空）。
+
+### 4. 导出结果
+
+点击"导出结果"按钮，将转换结果保存为 Excel 文件。
+
+导出的文件包含以下列：
+
+- `junbo_province_name` - Junbo 省份名称
+- `oper_province_name` - 局方省份名称
+- `junbo_city_name` - Junbo 地市名称
+- `oper_city_name` - 局方地市名称
+- `oper_city_code` - 局方地市编码
+- `junbo_district_name` - Junbo 区县名称
+- `oper_district_name` - 局方区县名称
+- `oper_district_code` - 局方区县编码
+- `match_score` - 匹配分数
+- `match_method` - 匹配方法
+- `confidence` - 匹配信心
+
+## 匹配逻辑
+
+系统以**骏伯地址库为主**，对每个骏伯地址条目尝试匹配局方地址，使用多级匹配策略：
+
+1. **编码匹配**: 优先使用编码进行精确匹配
+2. **名称精确匹配**: 使用地址名称进行精确匹配
+3. **模糊匹配**: 对名称进行模糊匹配（使用 Levenshtein 距离算法）
+
+匹配流程：
+- 遍历所有骏伯地址库条目（省份-城市-区县三级组合）
+- 对每个骏伯地址，在局方地址中查找最佳匹配
+- 如果找到匹配，显示匹配到的局方地址；否则局方地址列为空
+
+匹配置信度：
+- **high (精确匹配)**: 编码或名称完全匹配（匹配分数 ≥ 0.9）
+- **medium (模糊匹配)**: 名称部分匹配（匹配分数 ≥ 0.6）
+- **low (低置信度)**: 通过模糊匹配获得的匹配（匹配分数 > 0）
+- **none (未匹配)**: 无法找到匹配（匹配分数 = 0）
+
+## 项目结构
+
+```
+address-mapper/
+├── app/
+│   ├── api/
+│   │   ├── export/         # 导出 API
+│   │   ├── template/       # 模板下载 API
+│   │   └── upload/         # 文件上传 API
+│   ├── layout.tsx          # 根布局
+│   └── page.tsx            # 主页面
+├── components/
+│   └── ui/                 # shadcn/ui 组件
+├── data/
+│   └── junbo-address.json  # Junbo 地址库数据
+├── lib/
+│   ├── address-matcher.ts  # 地址匹配逻辑
+│   ├── excel.ts            # Excel 处理工具
+│   ├── types.ts            # TypeScript 类型定义
+│   └── utils.ts            # 工具函数
+└── public/                 # 静态资源
+```
+
+## 开发说明
+
+### 添加新的地址库数据
+
+编辑 `data/junbo-address.json` 文件，格式如下：
+
+```json
+{
+  "0000": {
+    "省份编码": "省份名称",
+    ...
+  },
+  "省份编码": {
+    "地市编码": "地市名称",
+    ...
+  },
+  "地市编码": {
+    "区县编码": "区县名称",
+    ...
+  }
+}
+```
+
+### 自定义匹配逻辑
+
+修改 `lib/address-matcher.ts` 文件中的匹配函数。
+
+## 作者
+
+**sgz**
+
+创建日期: 2025-11-28
+
+## 许可证
+
+MIT License
