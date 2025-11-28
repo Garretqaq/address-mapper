@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X, Search } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X, Search, Square, CheckSquare } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -66,6 +66,16 @@ export default function Home() {
   
   // 记录修改过的行索引
   const [modifiedRows, setModifiedRows] = useState<Set<number>>(new Set());
+  
+  // 批量选择状态
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  
+  // 批量修改状态
+  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
+  const [batchProvince, setBatchProvince] = useState<string>('');
+  const [batchCity, setBatchCity] = useState<string>('');
+  const [batchDistrict, setBatchDistrict] = useState<string>('');
 
   /**
    * 处理文件选择
@@ -131,51 +141,36 @@ export default function Home() {
     }
   };
 
+
   /**
-   * 导出结果为 Excel
+   * 批量选择处理
    */
-  const handleExport = async () => {
-    if (results.length === 0) {
-      setError('没有可导出的数据');
-      return;
-    }
-
-    // 如果有修改，给用户提示
-    if (modifiedRows.size > 0) {
-      const confirmed = window.confirm(
-        `您已修改了 ${modifiedRows.size} 条记录，这些修改将包含在导出的文件中。是否继续导出？`
-      );
-      if (!confirmed) {
-        return;
+  const handleSelectRow = (rowIndex: number) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowIndex)) {
+        newSet.delete(rowIndex);
+      } else {
+        newSet.add(rowIndex);
       }
-    }
-
-    try {
-      const response = await fetch('/api/export', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ results }),
-      });
-
-      if (!response.ok) {
-        throw new Error('导出失败');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `address-mapping-result-${Date.now()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '导出失败');
-    }
+      return newSet;
+    });
   };
+
+
+  /**
+   * 清空选择
+   */
+  const handleClearSelection = () => {
+    setSelectedRows(new Set());
+    setIsSelectMode(false);
+    setIsBatchEditMode(false);
+    setBatchProvince('');
+    setBatchCity('');
+    setBatchDistrict('');
+  };
+
+
 
   /**
    * 下载模板文件
@@ -441,6 +436,94 @@ export default function Home() {
   }, [districtCodeCache]);
 
   /**
+   * 批量修改地址
+   */
+  const handleBatchEdit = useCallback(() => {
+    if (selectedRows.size === 0) {
+      setError('请先选择要修改的数据');
+      return;
+    }
+
+    if (!batchProvince) {
+      setError('批量修改时，必须至少选择省份');
+      return;
+    }
+
+    setResults(prevResults => {
+      const newResults = [...prevResults];
+      const newModifiedRows = new Set(modifiedRows);
+
+      // 批量更新所有选中的行
+      selectedRows.forEach(rowIndex => {
+        const result = newResults[rowIndex];
+        if (!result) return;
+
+        const newOutput = { ...result.output };
+        const newInput = { ...result.input };
+
+        // 更新省份
+        const provinceCode = getOperProvinceCode(batchProvince);
+        newOutput.oper_province_name = batchProvince;
+        newOutput.oper_province_code = provinceCode;
+        newInput.省份名称 = batchProvince;
+        newInput.省份编码 = provinceCode;
+
+        // 如果设置了城市，更新城市
+        if (batchCity) {
+          const cityCode = getOperCityCode(batchProvince, batchCity);
+          newOutput.oper_city_name = batchCity;
+          newOutput.oper_city_code = cityCode;
+          newInput.地市名称 = batchCity;
+          newInput.地市编码 = cityCode;
+
+          // 如果设置了区县，更新区县
+          if (batchDistrict) {
+            const districtCode = getOperDistrictCode(batchProvince, batchCity, batchDistrict);
+            newOutput.oper_district_name = batchDistrict;
+            newOutput.oper_district_code = districtCode;
+            newInput.区县名称 = batchDistrict;
+            newInput.区县编码 = districtCode;
+          } else {
+            // 清空区县
+            newOutput.oper_district_name = '';
+            newOutput.oper_district_code = '';
+            newInput.区县名称 = '';
+            newInput.区县编码 = '';
+          }
+        } else {
+          // 清空城市和区县
+          newOutput.oper_city_name = '';
+          newOutput.oper_city_code = '';
+          newOutput.oper_district_name = '';
+          newOutput.oper_district_code = '';
+          newInput.地市名称 = '';
+          newInput.地市编码 = '';
+          newInput.区县名称 = '';
+          newInput.区县编码 = '';
+        }
+
+        newResults[rowIndex] = {
+          ...result,
+          input: newInput,
+          output: newOutput,
+        };
+
+        // 记录修改
+        newModifiedRows.add(rowIndex);
+      });
+
+      setModifiedRows(newModifiedRows);
+      return newResults;
+    });
+
+    // 清空批量修改状态
+    setIsBatchEditMode(false);
+    setBatchProvince('');
+    setBatchCity('');
+    setBatchDistrict('');
+  }, [selectedRows, batchProvince, batchCity, batchDistrict, getOperProvinceCode, getOperCityCode, getOperDistrictCode, modifiedRows]);
+
+  /**
    * 获取所有唯一的省份列表（骏伯）
    */
   const uniqueProvinces = useMemo(() => {
@@ -546,6 +629,131 @@ export default function Home() {
   const totalPages = useMemo(() => {
     return Math.ceil(filteredResults.length / ITEMS_PER_PAGE);
   }, [filteredResults]);
+
+  /**
+   * 导出结果为 Excel（支持导出全部、筛选后或选中数据）
+   * 使用 useCallback 优化，避免重复创建函数
+   */
+  const handleExport = useCallback(async (exportType: 'all' | 'filtered' | 'selected' = 'all') => {
+    let dataToExport: AddressMatchResult[] = [];
+    
+    if (exportType === 'selected' && selectedRows.size > 0) {
+      // 导出选中的数据
+      dataToExport = Array.from(selectedRows)
+        .map(index => results[index])
+        .filter(Boolean);
+    } else if (exportType === 'filtered') {
+      // 导出筛选后的数据
+      dataToExport = filteredResults;
+    } else {
+      // 导出全部数据
+      dataToExport = results;
+    }
+
+    if (dataToExport.length === 0) {
+      setError(`没有可导出的数据${exportType === 'selected' ? '（请先选择数据）' : ''}`);
+      return;
+    }
+
+    // 如果有修改，给用户提示
+    if (modifiedRows.size > 0) {
+      const confirmed = window.confirm(
+        `您已修改了 ${modifiedRows.size} 条记录，这些修改将包含在导出的文件中。是否继续导出？`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ results: dataToExport }),
+      });
+
+      if (!response.ok) {
+        throw new Error('导出失败');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const exportTypeName = exportType === 'selected' ? '选中' : exportType === 'filtered' ? '筛选后' : '全部';
+      a.download = `address-mapping-result-${exportTypeName}-${Date.now()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导出失败');
+    }
+  }, [results, filteredResults, selectedRows, modifiedRows]);
+
+  /**
+   * 全选/取消全选当前页（使用 useCallback 优化）
+   */
+  const handleSelectAll = useCallback(() => {
+    if (selectedRows.size === paginatedResults.length) {
+      // 取消全选
+      setSelectedRows(new Set());
+    } else {
+      // 全选当前页
+      const newSet = new Set<number>();
+      paginatedResults.forEach((result, index) => {
+        const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
+        const actualRowIndex = filteredIndex < filteredResults.length 
+          ? results.findIndex(r => r === filteredResults[filteredIndex])
+          : -1;
+        if (actualRowIndex >= 0) {
+          newSet.add(actualRowIndex);
+        }
+      });
+      setSelectedRows(newSet);
+    }
+  }, [selectedRows.size, paginatedResults, currentPage, filteredResults, results]);
+
+  /**
+   * 快捷键支持
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + F: 聚焦搜索框
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="text"][placeholder*="搜索"]') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+      
+      // Ctrl/Cmd + S: 导出全部数据
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (results.length > 0) {
+          handleExport('all');
+        }
+      }
+      
+      // Ctrl/Cmd + A: 全选（仅在选择模式下）
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a' && isSelectMode) {
+        e.preventDefault();
+        handleSelectAll();
+      }
+      
+      // Escape: 退出选择模式
+      if (e.key === 'Escape' && isSelectMode) {
+        handleClearSelection();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [results.length, isSelectMode, handleExport, handleSelectAll, handleClearSelection]);
 
   /**
    * 当省份变化时，检查城市筛选是否有效
@@ -812,13 +1020,26 @@ export default function Home() {
               </button>
 
               {results.length > 0 && (
-                <button
-                  onClick={handleExport}
-                  className="flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  导出结果
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => handleExport('all')}
+                    className="flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                    title="导出全部数据 (Ctrl+S)"
+                  >
+                    <Download className="w-4 h-4" />
+                    导出全部
+                  </button>
+                  {filteredResults.length !== results.length && (
+                    <button
+                      onClick={() => handleExport('filtered')}
+                      className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-green-700 bg-green-50 border border-green-300 rounded-lg hover:bg-green-100 transition-colors"
+                      title="导出筛选后的数据"
+                    >
+                      <Download className="w-3 h-3" />
+                      导出筛选
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -986,38 +1207,186 @@ export default function Home() {
             </div>
 
             {/* 统计信息和快速操作 */}
-            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-sm text-gray-600">
-                共 <span className="font-semibold text-gray-900">{filteredResults.length}</span> 条数据（筛选后），
-                共 <span className="font-semibold text-gray-900">{results.length}</span> 条（全部）
-                {filteredResults.length !== results.length && (
-                  <span className="ml-2 text-blue-600">已应用筛选条件</span>
-                )}
+            <div className="mb-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-sm text-gray-600">
+                  共 <span className="font-semibold text-gray-900">{filteredResults.length}</span> 条数据（筛选后），
+                  共 <span className="font-semibold text-gray-900">{results.length}</span> 条（全部）
+                  {filteredResults.length !== results.length && (
+                    <span className="ml-2 text-blue-600">已应用筛选条件</span>
+                  )}
+                </div>
+                
+                {/* 快速跳转按钮 */}
+                {(() => {
+                  const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
+                  const isNotFilteringUnmatched = filterConfidence === 'all' || normalizeConfidence(filterConfidence) !== 'none';
+                  if (unmatchedCount > 0 && isNotFilteringUnmatched) {
+                    return (
+                      <button
+                        onClick={() => {
+                          setFilterConfidence('none');
+                          setFilterProvince('all');
+                          setFilterCity('all');
+                          setSearchQuery('');
+                          setCurrentPage(1);
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        跳转到未匹配项 ({unmatchedCount})
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               
-              {/* 快速跳转按钮 */}
-              {(() => {
-                const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
-                const isNotFilteringUnmatched = filterConfidence === 'all' || normalizeConfidence(filterConfidence) !== 'none';
-                if (unmatchedCount > 0 && isNotFilteringUnmatched) {
-                  return (
+              {/* 批量操作工具栏 */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => {
-                        setFilterConfidence('none');
-                        setFilterProvince('all');
-                        setFilterCity('all');
-                        setSearchQuery('');
-                        setCurrentPage(1);
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
+                      onClick={() => setIsSelectMode(!isSelectMode)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-md hover:bg-blue-50 transition-colors"
                     >
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      跳转到未匹配项 ({unmatchedCount})
+                      {isSelectMode ? (
+                        <>
+                          <CheckSquare className="w-4 h-4" />
+                          退出选择
+                        </>
+                      ) : (
+                        <>
+                          <Square className="w-4 h-4" />
+                          批量选择
+                        </>
+                      )}
                     </button>
-                  );
-                }
-                return null;
-              })()}
+                    
+                    {isSelectMode && (
+                      <>
+                        <span className="text-sm text-gray-600">
+                          已选择 <span className="font-semibold text-blue-700">{selectedRows.size}</span> 项
+                        </span>
+                        <button
+                          onClick={handleSelectAll}
+                          className="text-sm text-blue-600 hover:text-blue-700 underline"
+                        >
+                          {selectedRows.size === paginatedResults.length ? '取消全选' : '全选当前页'}
+                        </button>
+                        {selectedRows.size > 0 && (
+                          <>
+                            <button
+                              onClick={handleClearSelection}
+                              className="text-sm text-gray-500 hover:text-gray-700"
+                            >
+                              清空选择
+                            </button>
+                            <button
+                              onClick={() => setIsBatchEditMode(!isBatchEditMode)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-300 rounded-md hover:bg-orange-100 transition-colors"
+                            >
+                              {isBatchEditMode ? '取消修改' : '批量修改'}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  
+                  {selectedRows.size > 0 && (
+                    <button
+                      onClick={() => handleExport('selected')}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      导出选中 ({selectedRows.size})
+                    </button>
+                  )}
+                </div>
+
+                {/* 批量修改面板 */}
+                {isBatchEditMode && selectedRows.size > 0 && (
+                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="mb-3">
+                      <h3 className="text-sm font-semibold text-gray-800 mb-1">
+                        批量修改选中 {selectedRows.size} 项的局方地址
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        选择省份、城市、区县后点击"应用修改"按钮
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-700">批量设置省份</label>
+                        <SearchableSelect
+                          value={batchProvince}
+                          onValueChange={(value) => {
+                            setBatchProvince(value);
+                            // 清空城市和区县（因为省份变化了）
+                            setBatchCity('');
+                            setBatchDistrict('');
+                          }}
+                          options={operProvinceList}
+                          placeholder="选择省份"
+                          className="w-full"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-700">批量设置城市</label>
+                        <SearchableSelect
+                          value={batchCity}
+                          onValueChange={(value) => {
+                            setBatchCity(value);
+                            // 清空区县（因为城市变化了）
+                            setBatchDistrict('');
+                          }}
+                          options={batchProvince ? getOperCitiesByProvince(batchProvince) : []}
+                          placeholder={batchProvince ? "选择城市" : "请先选择省份"}
+                          disabled={!batchProvince}
+                          className="w-full"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-700">批量设置区县</label>
+                        <SearchableSelect
+                          value={batchDistrict}
+                          onValueChange={setBatchDistrict}
+                          options={batchProvince && batchCity ? getOperDistrictsByCity(batchProvince, batchCity) : []}
+                          placeholder={batchProvince && batchCity ? "选择区县" : "请先选择城市"}
+                          disabled={!batchProvince || !batchCity}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleBatchEdit}
+                        disabled={!batchProvince}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        应用修改
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsBatchEditMode(false);
+                          setBatchProvince('');
+                          setBatchCity('');
+                          setBatchDistrict('');
+                        }}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 表格 */}
@@ -1026,6 +1395,21 @@ export default function Home() {
                 <table className="w-full text-sm text-left text-gray-700">
                   <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                     <tr>
+                      {isSelectMode && (
+                        <th className="px-3 py-3 w-12">
+                          <button
+                            onClick={handleSelectAll}
+                            className="flex items-center justify-center"
+                            title={selectedRows.size === paginatedResults.length ? '取消全选' : '全选当前页'}
+                          >
+                            {selectedRows.size === paginatedResults.length ? (
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Square className="w-4 h-4 text-gray-400" />
+                            )}
+                          </button>
+                        </th>
+                      )}
                       <th className="px-3 py-3 w-16">序号</th>
                       <th className="px-3 py-3 min-w-[120px]">Junbo 省份</th>
                       <th className="px-3 py-3 min-w-[140px]">局方省份</th>
@@ -1079,11 +1463,27 @@ export default function Home() {
                     const availableCities = currentProvince ? getOperCitiesByProvince(currentProvince) : [];
                     const availableDistricts = currentProvince && currentCity ? getOperDistrictsByCity(currentProvince, currentCity) : [];
 
+                    const isSelected = actualRowIndex >= 0 && selectedRows.has(actualRowIndex);
+                    
                     return (
                       <tr 
                         key={`${currentPage}-${globalIndex}-${result.output.junbo_province_name}-${result.output.junbo_city_name}-${result.output.junbo_district_name}`} 
-                        className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''}`}
+                        className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''} ${isSelected ? 'bg-blue-50' : ''}`}
                       >
+                        {isSelectMode && (
+                          <td className="px-3 py-3">
+                            <button
+                              onClick={() => handleSelectRow(actualRowIndex)}
+                              className="flex items-center justify-center"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                              ) : (
+                                <Square className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
+                          </td>
+                        )}
                         <td className="px-3 py-3">{globalIndex}</td>
                         <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
                           {result.output.junbo_province_name || '-'}
