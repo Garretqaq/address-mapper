@@ -114,8 +114,9 @@ export function SearchableSelect({
     <div ref={containerRef} className={cn("relative", className)}>
       <div
         className={cn(
-          "border-input data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center gap-2 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 min-h-[36px]",
-          open && "ring-[3px] ring-ring/50"
+          "border-input data-[placeholder]:text-muted-foreground focus-visible:border-blue-500 focus-visible:ring-blue-500/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-xs transition-all outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 min-h-[36px]",
+          open && "ring-[3px] ring-blue-500/20 border-blue-500 shadow-md",
+          !open && "hover:border-gray-400"
         )}
         onClick={() => !disabled && setOpen(true)}
       >
@@ -131,7 +132,7 @@ export function SearchableSelect({
           onFocus={() => !disabled && setOpen(true)}
           placeholder={value ? undefined : placeholder}
           disabled={disabled}
-          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+          className="flex-1 bg-transparent outline-none placeholder:text-gray-400 text-gray-900"
         />
         <div className="flex items-center gap-1">
           {value && !disabled && (
@@ -154,7 +155,7 @@ export function SearchableSelect({
       </div>
 
       {open && !disabled && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95">
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white text-gray-900 shadow-lg animate-in fade-in-0 zoom-in-95">
           <div className="max-h-[300px] overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
@@ -165,9 +166,10 @@ export function SearchableSelect({
                 <div
                   key={option}
                   className={cn(
-                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                    value === option && "bg-accent text-accent-foreground",
-                    index === focusedIndex && "bg-accent text-accent-foreground"
+                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none transition-colors",
+                    value === option && "bg-blue-50 text-blue-700 font-medium",
+                    index === focusedIndex && !(value === option) && "bg-gray-100 text-gray-900",
+                    !(value === option) && index !== focusedIndex && "hover:bg-gray-50 text-gray-700"
                   )}
                   onClick={() => handleSelect(option)}
                   onMouseEnter={() => setFocusedIndex(index)}
