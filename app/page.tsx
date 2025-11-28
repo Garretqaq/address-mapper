@@ -896,7 +896,7 @@ export default function Home() {
             </div>
 
             {/* 表格 */}
-            <div className="overflow-x-auto mb-6 -mx-2 md:-mx-4">
+            <div className="overflow-x-auto overflow-y-visible mb-6 -mx-2 md:-mx-4">
               <div className="inline-block min-w-full align-middle px-2 md:px-4">
                 <table className="w-full text-sm text-left text-gray-700">
                   <thead className="text-xs text-gray-700 uppercase bg-gray-100">
@@ -942,7 +942,7 @@ export default function Home() {
                         </td>
                         
                         {/* 局方省份 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
+                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
                           <SearchableSelect
                             value={currentProvince}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
@@ -957,7 +957,7 @@ export default function Home() {
                         </td>
                         
                         {/* 局方城市 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
+                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
                           <SearchableSelect
                             value={currentCity}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
@@ -973,7 +973,7 @@ export default function Home() {
                         </td>
                         
                         {/* 局方区县 - 可编辑下拉框 */}
-                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
+                        <td className={`px-3 py-3 relative ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
                           <SearchableSelect
                             value={currentDistrict}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}

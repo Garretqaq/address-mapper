@@ -25,6 +25,13 @@ export function SearchableSelect({
   const [searchQuery, setSearchQuery] = React.useState("")
   const inputRef = React.useRef<HTMLInputElement>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const [dropdownPosition, setDropdownPosition] = React.useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+    showAbove: boolean
+  }>({ top: 0, left: 0, width: 0, showAbove: false })
 
   // 过滤选项
   const filteredOptions = React.useMemo(() => {
@@ -68,6 +75,62 @@ export function SearchableSelect({
       return () => document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [open])
+
+  // 更新下拉框位置（fixed 定位使用视口坐标，不需要加 scrollY/scrollX）
+  // 如果触底则向上展示
+  const updateDropdownPosition = React.useCallback(() => {
+    if (containerRef.current && open) {
+      const rect = containerRef.current.getBoundingClientRect()
+      const viewportHeight = window.innerHeight
+      const dropdownMaxHeight = 300 // 下拉框最大高度
+      const gap = 4 // 下拉框与输入框的间距
+      
+      // 计算可用空间
+      const spaceBelow = viewportHeight - rect.bottom
+      const spaceAbove = rect.top
+      
+      // 判断是向上还是向下展示
+      // 如果下方空间不足（小于下拉框高度 + 间距），且上方空间足够，则向上展示
+      const showAbove = spaceBelow < dropdownMaxHeight + gap && spaceAbove > spaceBelow
+      
+      if (showAbove) {
+        // 向上展示：使用 bottom 定位，下拉框底部在输入框顶部上方 gap 距离
+        // 确保不会超出视口顶部，如果空间不足则限制最大高度
+        const availableHeight = Math.min(spaceAbove - gap, dropdownMaxHeight)
+        setDropdownPosition({
+          top: undefined,
+          bottom: viewportHeight - rect.top + gap, // 从视口底部计算
+          left: rect.left,
+          width: rect.width,
+          showAbove: true,
+        })
+      } else {
+        // 向下展示：使用 top 定位，下拉框顶部在输入框下方 gap 距离
+        setDropdownPosition({
+          top: rect.bottom + gap,
+          bottom: undefined,
+          left: rect.left,
+          width: rect.width,
+          showAbove: false,
+        })
+      }
+    }
+  }, [open])
+
+  // 当打开时更新位置
+  React.useEffect(() => {
+    if (open) {
+      updateDropdownPosition()
+      // 监听滚动和窗口大小变化
+      const handleUpdate = () => updateDropdownPosition()
+      window.addEventListener('scroll', handleUpdate, true)
+      window.addEventListener('resize', handleUpdate)
+      return () => {
+        window.removeEventListener('scroll', handleUpdate, true)
+        window.removeEventListener('resize', handleUpdate)
+      }
+    }
+  }, [open, updateDropdownPosition])
 
   // 键盘导航
   const [focusedIndex, setFocusedIndex] = React.useState(-1)
@@ -154,8 +217,16 @@ export function SearchableSelect({
         </div>
       </div>
 
-      {open && !disabled && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white text-gray-900 shadow-lg animate-in fade-in-0 zoom-in-95">
+      {open && !disabled && typeof window !== 'undefined' && (
+        <div 
+          className="fixed z-[9999] rounded-md border border-gray-200 bg-white text-gray-900 shadow-lg animate-in fade-in-0 zoom-in-95"
+          style={{
+            top: dropdownPosition.top !== undefined ? `${dropdownPosition.top}px` : undefined,
+            bottom: dropdownPosition.bottom !== undefined ? `${dropdownPosition.bottom}px` : undefined,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`,
+          }}
+        >
           <div className="max-h-[300px] overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
