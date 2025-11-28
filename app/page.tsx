@@ -7,10 +7,11 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Input } from '@/components/ui/input';
 import type { AddressMatchResult } from '@/lib/types';
 
 const ITEMS_PER_PAGE = 50; // 每页显示条数
@@ -536,6 +537,21 @@ export default function Home() {
   };
 
   /**
+   * 重置所有筛选
+   */
+  const handleResetFilters = () => {
+    setFilterConfidence('all');
+    setFilterProvince('all');
+    setFilterCity('all');
+    setCurrentPage(1);
+  };
+
+  /**
+   * 检查是否有筛选条件
+   */
+  const hasActiveFilters = filterConfidence !== 'all' || filterProvince !== 'all' || filterCity !== 'all';
+
+  /**
    * 处理局方地址修改（使用 useCallback 优化）
    */
   const handleAddressChange = useCallback((
@@ -643,6 +659,26 @@ export default function Home() {
     }
   };
 
+  /**
+   * 匹配状态映射（中文 -> 英文）
+   */
+  const confidenceMap: Record<string, string> = {
+    '精确匹配': 'high',
+    '模糊匹配': 'medium',
+    '低置信度': 'low',
+    '未匹配': 'none',
+  };
+
+  /**
+   * 匹配状态反向映射（英文 -> 中文）
+   */
+  const confidenceReverseMap: Record<string, string> = {
+    'high': '精确匹配',
+    'medium': '模糊匹配',
+    'low': '低置信度',
+    'none': '未匹配',
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-6 lg:p-8">
       <div className="max-w-[85%] mx-auto">
@@ -740,49 +776,78 @@ export default function Home() {
         {/* 结果展示区域 */}
         {results.length > 0 && (
           <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">
-                转换结果（显示所有骏伯地址库条目）
-              </h2>
+            <div className="mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">
+                  转换结果（显示所有骏伯地址库条目）
+                </h2>
+              </div>
               
-              {/* 筛选控件 */}
-              <div className="flex flex-wrap gap-3">
-                <Select value={filterConfidence} onValueChange={(value) => handleFilterChange('confidence', value)}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="匹配状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部状态</SelectItem>
-                    <SelectItem value="high">精确匹配</SelectItem>
-                    <SelectItem value="medium">模糊匹配</SelectItem>
-                    <SelectItem value="low">低置信度</SelectItem>
-                    <SelectItem value="none">未匹配</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* 筛选控件区域 */}
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="flex flex-col gap-4">
+                  {/* 筛选标题栏 */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">筛选条件</span>
+                      {hasActiveFilters && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                          已筛选
+                        </span>
+                      )}
+                    </div>
+                    {hasActiveFilters && (
+                      <button
+                        onClick={handleResetFilters}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                        清空筛选
+                      </button>
+                    )}
+                  </div>
 
-                <Select value={filterProvince} onValueChange={(value) => handleFilterChange('province', value)}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Junbo 省份" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部省份</SelectItem>
-                    {uniqueProvinces.map(province => (
-                      <SelectItem key={province} value={province}>{province}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  {/* 筛选控件 */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-600">匹配状态</label>
+                      <SearchableSelect
+                        value={filterConfidence === 'all' ? '' : (confidenceReverseMap[filterConfidence] || '')}
+                        onValueChange={(value) => {
+                          const mappedValue = value ? confidenceMap[value] || value : 'all';
+                          handleFilterChange('confidence', mappedValue);
+                        }}
+                        options={['精确匹配', '模糊匹配', '低置信度', '未匹配']}
+                        placeholder="全部状态"
+                        className="w-full"
+                      />
+                    </div>
 
-                <Select value={filterCity} onValueChange={(value) => handleFilterChange('city', value)}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Junbo 地市" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部地市</SelectItem>
-                    {uniqueCities.map(city => (
-                      <SelectItem key={city} value={city}>{city}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-600">Junbo 省份</label>
+                      <SearchableSelect
+                        value={filterProvince === 'all' ? '' : filterProvince}
+                        onValueChange={(value) => handleFilterChange('province', value || 'all')}
+                        options={uniqueProvinces}
+                        placeholder="全部省份"
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-600">Junbo 地市</label>
+                      <SearchableSelect
+                        value={filterCity === 'all' ? '' : filterCity}
+                        onValueChange={(value) => handleFilterChange('city', value || 'all')}
+                        options={uniqueCities}
+                        placeholder="全部地市"
+                        disabled={filterProvince === 'all'}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
