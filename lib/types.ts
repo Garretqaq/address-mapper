@@ -44,7 +44,7 @@ export interface JunboAddress {
 export interface MatchResult {
   junbo: JunboAddress;
   matchScore: number; // 匹配度 0-1
-  matchMethod: 'code' | 'exact' | 'fuzzy' | 'parse' | 'none'; // 匹配方式
+  matchMethod: 'code' | 'exact' | 'fuzzy' | 'none'; // 匹配方式
   confidence: 'high' | 'medium' | 'low' | 'none'; // 匹配信心
 }
 

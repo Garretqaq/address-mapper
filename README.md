@@ -17,7 +17,6 @@
 - **样式**: Tailwind CSS V4
 - **UI 组件**: shadcn/ui
 - **Excel 处理**: xlsx
-- **地址解析**: zh-address-parse
 
 ## 快速开始
 

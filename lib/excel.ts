@@ -129,7 +129,6 @@ function translateMatchMethod(method: string): string {
     code: '编码匹配',
     exact: '精确匹配',
     fuzzy: '模糊匹配',
-    parse: '解析匹配',
     none: '未匹配',
   };
   return translations[method] || method;
