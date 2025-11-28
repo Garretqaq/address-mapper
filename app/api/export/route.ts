@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
     // 生成 Excel 文件
     const buffer = writeExcel(outputData, 'address-mapping-result');
 
-    // 返回文件
-    return new NextResponse(buffer, {
+    // 返回文件（将 Buffer 转换为 Uint8Array）
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
