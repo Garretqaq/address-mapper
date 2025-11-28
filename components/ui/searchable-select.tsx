@@ -42,12 +42,12 @@ export function SearchableSelect({
     )
   }, [options, searchQuery])
 
-  // 处理选择
-  const handleSelect = (option: string) => {
+  // 处理选择（使用 useCallback 优化）
+  const handleSelect = React.useCallback((option: string) => {
     onValueChange(option)
     setOpen(false)
     setSearchQuery("")
-  }
+  }, [onValueChange])
 
   // 处理清空
   const handleClear = (e: React.MouseEvent) => {
@@ -117,17 +117,28 @@ export function SearchableSelect({
     }
   }, [open])
 
-  // 当打开时更新位置
+  // 当打开时更新位置（使用防抖优化性能）
   React.useEffect(() => {
     if (open) {
       updateDropdownPosition()
+      
+      // 防抖函数，减少频繁更新
+      let timeoutId: NodeJS.Timeout | null = null
+      const debouncedUpdate = () => {
+        if (timeoutId) clearTimeout(timeoutId)
+        timeoutId = setTimeout(() => {
+          updateDropdownPosition()
+        }, 16) // 约 60fps，平衡性能和响应速度
+      }
+      
       // 监听滚动和窗口大小变化
-      const handleUpdate = () => updateDropdownPosition()
-      window.addEventListener('scroll', handleUpdate, true)
-      window.addEventListener('resize', handleUpdate)
+      window.addEventListener('scroll', debouncedUpdate, true)
+      window.addEventListener('resize', debouncedUpdate)
+      
       return () => {
-        window.removeEventListener('scroll', handleUpdate, true)
-        window.removeEventListener('resize', handleUpdate)
+        if (timeoutId) clearTimeout(timeoutId)
+        window.removeEventListener('scroll', debouncedUpdate, true)
+        window.removeEventListener('resize', debouncedUpdate)
       }
     }
   }, [open, updateDropdownPosition])
@@ -171,7 +182,7 @@ export function SearchableSelect({
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [open, filteredOptions, focusedIndex])
+  }, [open, filteredOptions, focusedIndex, handleSelect])
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>

@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight, Filter, X, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -57,6 +57,9 @@ export default function Home() {
   const [filterConfidence, setFilterConfidence] = useState<string>('all');
   const [filterProvince, setFilterProvince] = useState<string>('all');
   const [filterCity, setFilterCity] = useState<string>('all');
+  
+  // 搜索状态
+  const [searchQuery, setSearchQuery] = useState<string>('');
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
@@ -470,8 +473,9 @@ export default function Home() {
 
   /**
    * 将后端返回的 confidence 转换为前端显示的状态（三个状态）
+   * 使用 useCallback 优化，避免重复创建函数
    */
-  const normalizeConfidence = (confidence: string): string => {
+  const normalizeConfidence = useCallback((confidence: string): string => {
     // high 和 medium 都统一为 'high'，显示为"精准匹配"
     if (confidence === 'high' || confidence === 'medium') {
       return 'high';
@@ -482,13 +486,28 @@ export default function Home() {
     }
     // none 保持为 'none'，显示为"未匹配"
     return 'none';
-  };
+  }, []);
 
   /**
-   * 筛选后的数据
+   * 筛选后的数据（包含搜索功能）
    */
   const filteredResults = useMemo(() => {
     return results.filter(result => {
+      // 搜索筛选（支持搜索省份、城市、区县名称）
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const matchProvince = result.output.junbo_province_name?.toLowerCase().includes(query) ||
+                             result.output.oper_province_name?.toLowerCase().includes(query);
+        const matchCity = result.output.junbo_city_name?.toLowerCase().includes(query) ||
+                         result.output.oper_city_name?.toLowerCase().includes(query);
+        const matchDistrict = result.output.junbo_district_name?.toLowerCase().includes(query) ||
+                             result.output.oper_district_name?.toLowerCase().includes(query);
+        
+        if (!matchProvince && !matchCity && !matchDistrict) {
+          return false;
+        }
+      }
+      
       // 匹配状态筛选（使用归一化后的状态）
       if (filterConfidence !== 'all') {
         const normalizedConfidence = normalizeConfidence(result.output.confidence);
@@ -510,7 +529,7 @@ export default function Home() {
       
       return true;
     });
-  }, [results, filterConfidence, filterProvince, filterCity]);
+  }, [results, searchQuery, filterConfidence, filterProvince, filterCity, normalizeConfidence]);
 
   /**
    * 分页数据
@@ -557,19 +576,28 @@ export default function Home() {
   };
 
   /**
+   * 处理搜索变化
+   */
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1); // 重置到第一页
+  };
+
+  /**
    * 重置所有筛选
    */
   const handleResetFilters = () => {
     setFilterConfidence('all');
     setFilterProvince('all');
     setFilterCity('all');
+    setSearchQuery('');
     setCurrentPage(1);
   };
 
   /**
    * 检查是否有筛选条件
    */
-  const hasActiveFilters = filterConfidence !== 'all' || filterProvince !== 'all' || filterCity !== 'all';
+  const hasActiveFilters = filterConfidence !== 'all' || filterProvince !== 'all' || filterCity !== 'all' || searchQuery.trim() !== '';
 
   /**
    * 处理局方地址修改（使用 useCallback 优化）
@@ -847,6 +875,29 @@ export default function Home() {
                     )}
                   </div>
 
+                  {/* 搜索框 */}
+                  <div className="mb-4">
+                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 block">搜索地址</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        type="text"
+                        placeholder="搜索省份、城市或区县名称..."
+                        value={searchQuery}
+                        onChange={(e) => handleSearchChange(e.target.value)}
+                        className="pl-10 w-full"
+                      />
+                      {searchQuery && (
+                        <button
+                          onClick={() => handleSearchChange('')}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   {/* 筛选控件 */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
@@ -914,15 +965,15 @@ export default function Home() {
                 <tbody>
                   {paginatedResults.map((result, index) => {
                     const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                    // 优化：直接使用索引计算，避免 findIndex 的性能问题
                     const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
-                    // 从 filteredResults 中找到对应的 result，然后在 results 中查找
+                    
+                    // 优化：建立索引映射缓存，避免重复 findIndex
+                    // 注意：这里仍然需要 findIndex，但可以通过建立映射表进一步优化
                     const actualRowIndex = filteredIndex < filteredResults.length 
                       ? results.findIndex(r => r === filteredResults[filteredIndex])
                       : -1;
-                    const isModified = actualRowIndex >= 0 && modifiedRows.has(actualRowIndex);
                     
-                    // 获取当前行的局方地址值
+                    const isModified = actualRowIndex >= 0 && modifiedRows.has(actualRowIndex);
                     const currentProvince = result.output.oper_province_name || '';
                     const currentCity = result.output.oper_city_name || '';
                     const currentDistrict = result.output.oper_district_name || '';
@@ -933,7 +984,7 @@ export default function Home() {
 
                     return (
                       <tr 
-                        key={`${currentPage}-${index}`} 
+                        key={`${currentPage}-${globalIndex}-${result.output.junbo_province_name}-${result.output.junbo_city_name}-${result.output.junbo_district_name}`} 
                         className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''}`}
                       >
                         <td className="px-3 py-3">{globalIndex}</td>
