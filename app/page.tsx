@@ -10,6 +10,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { AddressMatchResult } from '@/lib/types';
 
 const ITEMS_PER_PAGE = 50; // 每页显示条数
@@ -835,65 +836,41 @@ export default function Home() {
                         
                         {/* 局方省份 - 可编辑下拉框 */}
                         <td className="px-4 py-3">
-                          <Select
-                            value={currentProvince || undefined}
+                          <SearchableSelect
+                            value={currentProvince}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
-                          >
-                            <SelectTrigger className="w-full min-w-[120px]">
-                              <SelectValue placeholder="选择省份" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {operProvinceList.map(province => (
-                                <SelectItem key={province} value={province}>
-                                  {province}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            options={operProvinceList}
+                            placeholder="选择省份"
+                            className="w-full min-w-[120px]"
+                          />
                         </td>
                         
                         <td className="px-4 py-3">{result.output.junbo_city_name || '-'}</td>
                         
                         {/* 局方城市 - 可编辑下拉框 */}
                         <td className="px-4 py-3">
-                          <Select
-                            value={currentCity || undefined}
+                          <SearchableSelect
+                            value={currentCity}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
+                            options={availableCities}
+                            placeholder={currentProvince ? "选择城市" : "请先选择省份"}
                             disabled={!currentProvince}
-                          >
-                            <SelectTrigger className="w-full min-w-[120px]">
-                              <SelectValue placeholder={currentProvince ? "选择城市" : "请先选择省份"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableCities.map(city => (
-                                <SelectItem key={city} value={city}>
-                                  {city}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            className="w-full min-w-[120px]"
+                          />
                         </td>
                         
                         <td className="px-4 py-3">{result.output.junbo_district_name || '-'}</td>
                         
                         {/* 局方区县 - 可编辑下拉框 */}
                         <td className="px-4 py-3">
-                          <Select
-                            value={currentDistrict || undefined}
+                          <SearchableSelect
+                            value={currentDistrict}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}
+                            options={availableDistricts}
+                            placeholder={currentProvince && currentCity ? "选择区县" : "请先选择城市"}
                             disabled={!currentProvince || !currentCity}
-                          >
-                            <SelectTrigger className="w-full min-w-[120px]">
-                              <SelectValue placeholder={currentProvince && currentCity ? "选择区县" : "请先选择城市"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableDistricts.map(district => (
-                                <SelectItem key={district} value={district}>
-                                  {district}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            className="w-full min-w-[120px]"
+                          />
                         </td>
                         
                         <td className="px-4 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
