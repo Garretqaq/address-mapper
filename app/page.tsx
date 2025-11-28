@@ -831,13 +831,57 @@ export default function Home() {
             </div>
           )}
 
-          {/* 成功提示 */}
-          {results.length > 0 && !error && (
-            <div className="flex items-center gap-2 p-4 mb-4 text-green-700 bg-green-100 rounded-lg">
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              <span>成功处理 {results.length} 条骏伯地址数据（已匹配 {results.filter(r => normalizeConfidence(r.output.confidence) !== 'none').length} 条局方地址）</span>
-            </div>
-          )}
+          {/* 成功提示和统计卡片 */}
+          {results.length > 0 && !error && (() => {
+            const matchedCount = results.filter(r => normalizeConfidence(r.output.confidence) !== 'none').length;
+            const highConfidenceCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'high').length;
+            const lowConfidenceCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'low').length;
+            const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
+            const matchRate = results.length > 0 ? ((matchedCount / results.length) * 100).toFixed(1) : '0';
+            
+            return (
+              <div className="mb-4 space-y-3">
+                {/* 成功提示 */}
+                <div className="flex items-center gap-2 p-4 text-green-700 bg-green-100 rounded-lg">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="font-medium">成功处理 {results.length} 条骏伯地址数据</span>
+                </div>
+                
+                {/* 统计卡片 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">匹配率</div>
+                    <div className="text-2xl font-bold text-blue-600">{matchRate}%</div>
+                    <div className="text-xs text-gray-400 mt-1">{matchedCount} / {results.length}</div>
+                  </div>
+                  
+                  <div className="bg-white rounded-lg border border-green-200 p-4 shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">精准匹配</div>
+                    <div className="text-2xl font-bold text-green-600">{highConfidenceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {results.length > 0 ? ((highConfidenceCount / results.length) * 100).toFixed(1) : '0'}%
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white rounded-lg border border-orange-200 p-4 shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">低置信度</div>
+                    <div className="text-2xl font-bold text-orange-600">{lowConfidenceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {results.length > 0 ? ((lowConfidenceCount / results.length) * 100).toFixed(1) : '0'}%
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white rounded-lg border border-red-200 p-4 shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">未匹配</div>
+                    <div className="text-2xl font-bold text-red-600">{unmatchedCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {results.length > 0 ? ((unmatchedCount / results.length) * 100).toFixed(1) : '0'}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* 结果展示区域 */}
@@ -941,9 +985,39 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 统计信息 */}
-            <div className="mb-4 text-sm text-gray-600">
-              共 {filteredResults.length} 条数据（筛选后），共 {results.length} 条（全部）
+            {/* 统计信息和快速操作 */}
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-sm text-gray-600">
+                共 <span className="font-semibold text-gray-900">{filteredResults.length}</span> 条数据（筛选后），
+                共 <span className="font-semibold text-gray-900">{results.length}</span> 条（全部）
+                {filteredResults.length !== results.length && (
+                  <span className="ml-2 text-blue-600">已应用筛选条件</span>
+                )}
+              </div>
+              
+              {/* 快速跳转按钮 */}
+              {(() => {
+                const unmatchedCount = results.filter(r => normalizeConfidence(r.output.confidence) === 'none').length;
+                const isNotFilteringUnmatched = filterConfidence === 'all' || normalizeConfidence(filterConfidence) !== 'none';
+                if (unmatchedCount > 0 && isNotFilteringUnmatched) {
+                  return (
+                    <button
+                      onClick={() => {
+                        setFilterConfidence('none');
+                        setFilterProvince('all');
+                        setFilterCity('all');
+                        setSearchQuery('');
+                        setCurrentPage(1);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      跳转到未匹配项 ({unmatchedCount})
+                    </button>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             {/* 表格 */}
@@ -963,7 +1037,30 @@ export default function Home() {
                     </tr>
                   </thead>
                 <tbody>
-                  {paginatedResults.map((result, index) => {
+                  {paginatedResults.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <Filter className="w-12 h-12 text-gray-300 mb-3" />
+                          <p className="text-gray-500 font-medium mb-1">没有找到匹配的数据</p>
+                          <p className="text-sm text-gray-400">
+                            {hasActiveFilters 
+                              ? '请尝试调整筛选条件或搜索关键词'
+                              : '暂无数据'}
+                          </p>
+                          {hasActiveFilters && (
+                            <button
+                              onClick={handleResetFilters}
+                              className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
+                            >
+                              清空所有筛选条件
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedResults.map((result, index) => {
                     const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
                     const filteredIndex = (currentPage - 1) * ITEMS_PER_PAGE + index;
                     
@@ -1038,7 +1135,8 @@ export default function Home() {
                         <td className="px-3 py-3">{getMatchStatusBadge(result.output.confidence)}</td>
                       </tr>
                     );
-                  })}
+                  })
+                  )}
                 </tbody>
               </table>
               </div>
