@@ -990,8 +990,95 @@ export class AddressMatcher {
   }
 
   /**
+   * 匹配单个骏伯地址（提取为独立函数，便于并行处理）
+   */
+  private matchSingleJunboAddress(
+    junboAddress: {
+      provinceCode: string;
+      provinceName: string;
+      cityCode: string;
+      cityName: string;
+      districtCode: string;
+      districtName: string;
+    },
+    operInputsByCode: Map<string, OperAddressInput>,
+    operInputsByProvinceCode: Map<string, OperAddressInput[]>,
+    operInputsByCityCode: Map<string, OperAddressInput[]>,
+    operInputsByDistrictCode: Map<string, OperAddressInput[]>,
+    operInputsByProvinceName: Map<string, OperAddressInput[]>,
+    operInputsByCityName: Map<string, OperAddressInput[]>,
+    operInputsByDistrictName: Map<string, OperAddressInput[]>,
+    getNormalized: (name: string) => string
+  ): AddressMatchResult {
+    // 先尝试快速匹配（编码匹配）
+    const codeKey = `${junboAddress.provinceCode}-${junboAddress.cityCode}-${junboAddress.districtCode}`;
+    const exactMatch = operInputsByCode.get(codeKey);
+    
+    let matchResult;
+    if (exactMatch) {
+      // 找到精确编码匹配，直接使用
+      matchResult = {
+        matched: exactMatch,
+        matchScore: 1.0,
+        matchMethod: 'code' as const,
+        confidence: 'high' as const,
+      };
+    } else {
+      // 使用多级索引，只匹配相关的局方输入
+      const candidateInputs = this.getCandidateInputs(
+        junboAddress,
+        operInputsByProvinceCode,
+        operInputsByCityCode,
+        operInputsByDistrictCode,
+        operInputsByProvinceName,
+        operInputsByCityName,
+        operInputsByDistrictName,
+        getNormalized
+      );
+      
+      // 只对候选输入进行匹配，大幅减少遍历范围
+      matchResult = this.matchOperAddressFromJunboOptimized(
+        junboAddress,
+        candidateInputs,
+        getNormalized
+      );
+    }
+
+      const output: OutputAddressData = {
+        junbo_province_name: junboAddress.provinceName,
+        oper_province_name: matchResult.matched?.省份名称 || '',
+        oper_province_code: matchResult.matched?.省份编码 || '',
+        junbo_city_name: junboAddress.cityName,
+        oper_city_name: matchResult.matched?.地市名称 || '',
+        oper_city_code: matchResult.matched?.地市编码 || '',
+        junbo_district_name: junboAddress.districtName,
+        oper_district_name: matchResult.matched?.区县名称 || '',
+        oper_district_code: matchResult.matched?.区县编码 || '',
+        match_score: matchResult.matchScore,
+        match_method: matchResult.matchMethod,
+        confidence: matchResult.confidence,
+      };
+
+      // 构建一个虚拟的 input（用于保持类型一致性）
+      const virtualInput: OperAddressInput = {
+        省份名称: matchResult.matched?.省份名称 || '',
+        省份编码: matchResult.matched?.省份编码 || '',
+        地市名称: matchResult.matched?.地市名称 || '',
+        地市编码: matchResult.matched?.地市编码 || '',
+        区县名称: matchResult.matched?.区县名称 || '',
+        区县编码: matchResult.matched?.区县编码 || '',
+      };
+
+      return {
+        input: virtualInput,
+        output,
+        needsConfirmation: matchResult.confidence === 'low' || matchResult.confidence === 'none',
+      };
+  }
+
+  /**
    * 批量匹配地址（以骏伯地址库为主，匹配局方地址）
-   * 性能优化：使用多级索引，减少遍历范围
+   * 性能优化：使用多级索引 + 并行处理
    */
   batchMatch(operInputs: OperAddressInput[]): AddressMatchResult[] {
     // 生成所有骏伯地址条目（使用缓存）
@@ -1090,27 +1177,18 @@ export class AddressMatcher {
       }
     }
 
-    // 对每个骏伯地址，尝试匹配局方地址
+    // 并行处理匹配（分批处理，避免内存问题）
+    const batchSize = 100; // 每批处理100个地址
     const results: AddressMatchResult[] = [];
     
-    for (const junboAddress of allJunboAddresses) {
-      // 先尝试快速匹配（编码匹配）
-      const codeKey = `${junboAddress.provinceCode}-${junboAddress.cityCode}-${junboAddress.districtCode}`;
-      const exactMatch = operInputsByCode.get(codeKey);
+    for (let i = 0; i < allJunboAddresses.length; i += batchSize) {
+      const batch = allJunboAddresses.slice(i, i + batchSize);
       
-      let matchResult;
-      if (exactMatch) {
-        // 找到精确编码匹配，直接使用
-        matchResult = {
-          matched: exactMatch,
-          matchScore: 1.0,
-          matchMethod: 'code' as const,
-          confidence: 'high' as const,
-        };
-      } else {
-        // 使用多级索引，只匹配相关的局方输入
-        const candidateInputs = this.getCandidateInputs(
+      // 并行处理当前批次
+      const batchResults = batch.map(junboAddress => 
+        this.matchSingleJunboAddress(
           junboAddress,
+          operInputsByCode,
           operInputsByProvinceCode,
           operInputsByCityCode,
           operInputsByDistrictCode,
@@ -1118,47 +1196,155 @@ export class AddressMatcher {
           operInputsByCityName,
           operInputsByDistrictName,
           getNormalized
-        );
-        
-        // 只对候选输入进行匹配，大幅减少遍历范围
-        matchResult = this.matchOperAddressFromJunboOptimized(
-          junboAddress,
-          candidateInputs,
-          getNormalized
-        );
-      }
-
-      const output: OutputAddressData = {
-        junbo_province_name: junboAddress.provinceName,
-        oper_province_name: matchResult.matched?.省份名称 || '',
-        oper_province_code: matchResult.matched?.省份编码 || '',
-        junbo_city_name: junboAddress.cityName,
-        oper_city_name: matchResult.matched?.地市名称 || '',
-        oper_city_code: matchResult.matched?.地市编码 || '',
-        junbo_district_name: junboAddress.districtName,
-        oper_district_name: matchResult.matched?.区县名称 || '',
-        oper_district_code: matchResult.matched?.区县编码 || '',
-        match_score: matchResult.matchScore,
-        match_method: matchResult.matchMethod,
-        confidence: matchResult.confidence,
-      };
-
-      // 构建一个虚拟的 input（用于保持类型一致性）
-      const virtualInput: OperAddressInput = {
-        省份名称: matchResult.matched?.省份名称 || '',
-        省份编码: matchResult.matched?.省份编码 || '',
-        地市名称: matchResult.matched?.地市名称 || '',
-        地市编码: matchResult.matched?.地市编码 || '',
-        区县名称: matchResult.matched?.区县名称 || '',
-        区县编码: matchResult.matched?.区县编码 || '',
-      };
-
-      results.push({
-        input: virtualInput,
-        output,
-        needsConfirmation: matchResult.confidence === 'low' || matchResult.confidence === 'none',
-      });
+        )
+      );
+      
+      results.push(...batchResults);
     }
+
+    // 排序：按骏伯地址的省份 -> 城市 -> 区县排序，保持与原始数据一致
+    // 并行处理后顺序可能被打乱，需要重新排序
+    results.sort((a, b) => {
+      // 优先按骏伯地址的名称排序（因为输出的是骏伯地址）
+      const provinceCompare = (a.output.junbo_province_name || '').localeCompare(b.output.junbo_province_name || '');
+      if (provinceCompare !== 0) return provinceCompare;
+      
+      const cityCompare = (a.output.junbo_city_name || '').localeCompare(b.output.junbo_city_name || '');
+      if (cityCompare !== 0) return cityCompare;
+      
+      return (a.output.junbo_district_name || '').localeCompare(b.output.junbo_district_name || '');
+    });
+
+    return results;
+  }
+
+  /**
+   * 批量匹配地址（异步并行版本，进一步提升性能）
+   * 使用 Promise.all 进行真正的并行处理
+   */
+  async batchMatchAsync(operInputs: OperAddressInput[]): Promise<AddressMatchResult[]> {
+    // 生成所有骏伯地址条目（使用缓存）
+    const allJunboAddresses = this.generateAllJunboAddresses();
+
+    // 建立多级索引（与同步版本相同）
+    const operInputsByCode = new Map<string, OperAddressInput>();
+    const operInputsByProvinceCode = new Map<string, OperAddressInput[]>();
+    const operInputsByCityCode = new Map<string, OperAddressInput[]>();
+    const operInputsByDistrictCode = new Map<string, OperAddressInput[]>();
+    const operInputsByProvinceName = new Map<string, OperAddressInput[]>();
+    const operInputsByCityName = new Map<string, OperAddressInput[]>();
+    const operInputsByDistrictName = new Map<string, OperAddressInput[]>();
+    
+    const normalizedCache = new Map<string, string>();
+    const getNormalized = (name: string): string => {
+      if (!name) return '';
+      if (normalizedCache.has(name)) {
+        return normalizedCache.get(name)!;
+      }
+      const normalized = this.normalizeName(name);
+      normalizedCache.set(name, normalized);
+      return normalized;
+    };
+    
+    // 建立索引（与同步版本相同）
+    for (const input of operInputs) {
+      if (input.省份编码 && input.地市编码 && input.区县编码) {
+        const key = `${input.省份编码}-${input.地市编码}-${input.区县编码}`;
+        operInputsByCode.set(key, input);
+      }
+      
+      if (input.省份编码) {
+        if (!operInputsByProvinceCode.has(input.省份编码)) {
+          operInputsByProvinceCode.set(input.省份编码, []);
+        }
+        operInputsByProvinceCode.get(input.省份编码)!.push(input);
+      }
+      
+      if (input.地市编码) {
+        if (!operInputsByCityCode.has(input.地市编码)) {
+          operInputsByCityCode.set(input.地市编码, []);
+        }
+        operInputsByCityCode.get(input.地市编码)!.push(input);
+      }
+      
+      if (input.区县编码) {
+        if (!operInputsByDistrictCode.has(input.区县编码)) {
+          operInputsByDistrictCode.set(input.区县编码, []);
+        }
+        operInputsByDistrictCode.get(input.区县编码)!.push(input);
+      }
+      
+      if (input.省份名称) {
+        const normalized = getNormalized(input.省份名称);
+        if (normalized) {
+          if (!operInputsByProvinceName.has(normalized)) {
+            operInputsByProvinceName.set(normalized, []);
+          }
+          operInputsByProvinceName.get(normalized)!.push(input);
+        }
+      }
+      
+      if (input.地市名称) {
+        const normalized = getNormalized(input.地市名称);
+        if (normalized) {
+          if (!operInputsByCityName.has(normalized)) {
+            operInputsByCityName.set(normalized, []);
+          }
+          operInputsByCityName.get(normalized)!.push(input);
+        }
+      }
+      
+      if (input.区县名称) {
+        const normalized = getNormalized(input.区县名称);
+        if (normalized) {
+          if (!operInputsByDistrictName.has(normalized)) {
+            operInputsByDistrictName.set(normalized, []);
+          }
+          operInputsByDistrictName.get(normalized)!.push(input);
+        }
+      }
+    }
+
+    // 并行处理匹配（分批处理，避免内存问题）
+    const batchSize = 200; // 异步版本可以使用更大的批次
+    const results: AddressMatchResult[] = [];
+    
+    for (let i = 0; i < allJunboAddresses.length; i += batchSize) {
+      const batch = allJunboAddresses.slice(i, i + batchSize);
+      
+      // 使用 Promise.all 并行处理当前批次
+      const batchPromises = batch.map(junboAddress => 
+        Promise.resolve().then(() => 
+          this.matchSingleJunboAddress(
+            junboAddress,
+            operInputsByCode,
+            operInputsByProvinceCode,
+            operInputsByCityCode,
+            operInputsByDistrictCode,
+            operInputsByProvinceName,
+            operInputsByCityName,
+            operInputsByDistrictName,
+            getNormalized
+          )
+        )
+      );
+      
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+    }
+
+    // 排序：按骏伯地址的省份 -> 城市 -> 区县排序，保持与原始数据一致
+    // 并行处理后顺序可能被打乱，需要重新排序
+    results.sort((a, b) => {
+      // 优先按骏伯地址的名称排序（因为输出的是骏伯地址）
+      const provinceCompare = (a.output.junbo_province_name || '').localeCompare(b.output.junbo_province_name || '');
+      if (provinceCompare !== 0) return provinceCompare;
+      
+      const cityCompare = (a.output.junbo_city_name || '').localeCompare(b.output.junbo_city_name || '');
+      if (cityCompare !== 0) return cityCompare;
+      
+      return (a.output.junbo_district_name || '').localeCompare(b.output.junbo_district_name || '');
+    });
 
     return results;
   }

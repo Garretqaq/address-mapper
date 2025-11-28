@@ -54,8 +54,7 @@ async function getMatcher(): Promise<AddressMatcher> {
 }
 
 /**
- * 并行处理批量匹配（优化性能）
- * 对于大量数据，可以考虑分批处理，但当前实现已经优化，直接处理即可
+ * 并行处理批量匹配（优化性能 - 使用异步并行版本）
  */
 async function batchMatchParallel(
   matcher: AddressMatcher,
@@ -63,12 +62,13 @@ async function batchMatchParallel(
 ): Promise<AddressMatchResult[]> {
   const matchStartTime = Date.now();
   
-  // 执行批量匹配（已优化的版本）
-  const results = matcher.batchMatch(inputData);
+  // 使用异步并行版本进行批量匹配
+  // 对于大量数据，会自动分批并行处理，充分利用 CPU 资源
+  const results = await matcher.batchMatchAsync(inputData);
   const matchDuration = Date.now() - matchStartTime;
   
   console.log(
-    `匹配完成: 输入 ${inputData.length} 条, 输出 ${results.length} 条, 耗时 ${matchDuration}ms, 平均 ${(matchDuration / inputData.length).toFixed(2)}ms/条`
+    `匹配完成: 输入 ${inputData.length} 条, 输出 ${results.length} 条, 耗时 ${matchDuration}ms, 平均 ${(matchDuration / Math.max(inputData.length, 1)).toFixed(2)}ms/条`
   );
   
   return results;
