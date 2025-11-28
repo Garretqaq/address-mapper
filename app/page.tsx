@@ -469,13 +469,33 @@ export default function Home() {
 
 
   /**
+   * 将后端返回的 confidence 转换为前端显示的状态（三个状态）
+   */
+  const normalizeConfidence = (confidence: string): string => {
+    // high 和 medium 都统一为 'high'，显示为"精准匹配"
+    if (confidence === 'high' || confidence === 'medium') {
+      return 'high';
+    }
+    // low 保持为 'low'，显示为"低置信度"
+    if (confidence === 'low') {
+      return 'low';
+    }
+    // none 保持为 'none'，显示为"未匹配"
+    return 'none';
+  };
+
+  /**
    * 筛选后的数据
    */
   const filteredResults = useMemo(() => {
     return results.filter(result => {
-      // 匹配状态筛选
-      if (filterConfidence !== 'all' && result.output.confidence !== filterConfidence) {
-        return false;
+      // 匹配状态筛选（使用归一化后的状态）
+      if (filterConfidence !== 'all') {
+        const normalizedConfidence = normalizeConfidence(result.output.confidence);
+        const normalizedFilter = normalizeConfidence(filterConfidence);
+        if (normalizedConfidence !== normalizedFilter) {
+          return false;
+        }
       }
       
       // 省份筛选
@@ -643,16 +663,14 @@ export default function Home() {
     });
   }, [getOperProvinceCode, getOperCityCode, getOperDistrictCode]);
 
-
   /**
-   * 获取匹配状态徽章
+   * 获取匹配状态徽章（三个状态：精准匹配、低置信度、未匹配）
    */
   const getMatchStatusBadge = (confidence: string) => {
-    if (confidence === 'high') {
-      return <Badge className="bg-green-500">精确匹配</Badge>;
-    } else if (confidence === 'medium') {
-      return <Badge className="bg-yellow-500">模糊匹配</Badge>;
-    } else if (confidence === 'low') {
+    const normalized = normalizeConfidence(confidence);
+    if (normalized === 'high') {
+      return <Badge className="bg-green-500">精准匹配</Badge>;
+    } else if (normalized === 'low') {
       return <Badge className="bg-orange-500">低置信度</Badge>;
     } else {
       return <Badge variant="destructive">未匹配</Badge>;
@@ -678,26 +696,24 @@ export default function Home() {
       // 不匹配且有局方地址：淡橙色背景（警告色，不要太鲜艳）
       return 'bg-orange-50';
     }
-    // 没有局方地址：默认样式
-    return '';
+    // 没有局方地址：淡红色背景（不要太鲜艳）
+    return 'bg-red-50';
   };
 
   /**
-   * 匹配状态映射（中文 -> 英文）
+   * 匹配状态映射（中文 -> 英文，三个状态）
    */
   const confidenceMap: Record<string, string> = {
-    '精确匹配': 'high',
-    '模糊匹配': 'medium',
+    '精准匹配': 'high',
     '低置信度': 'low',
     '未匹配': 'none',
   };
 
   /**
-   * 匹配状态反向映射（英文 -> 中文）
+   * 匹配状态反向映射（英文 -> 中文，三个状态）
    */
   const confidenceReverseMap: Record<string, string> = {
-    'high': '精确匹配',
-    'medium': '模糊匹配',
+    'high': '精准匹配',
     'low': '低置信度',
     'none': '未匹配',
   };
@@ -791,7 +807,7 @@ export default function Home() {
           {results.length > 0 && !error && (
             <div className="flex items-center gap-2 p-4 mb-4 text-green-700 bg-green-100 rounded-lg">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              <span>成功处理 {results.length} 条骏伯地址数据（已匹配 {results.filter(r => r.output.confidence !== 'none').length} 条局方地址）</span>
+              <span>成功处理 {results.length} 条骏伯地址数据（已匹配 {results.filter(r => normalizeConfidence(r.output.confidence) !== 'none').length} 条局方地址）</span>
             </div>
           )}
         </div>
@@ -841,7 +857,7 @@ export default function Home() {
                           const mappedValue = value ? confidenceMap[value] || value : 'all';
                           handleFilterChange('confidence', mappedValue);
                         }}
-                        options={['精确匹配', '模糊匹配', '低置信度', '未匹配']}
+                        options={['精准匹配', '低置信度', '未匹配']}
                         placeholder="全部状态"
                         className="w-full"
                       />
