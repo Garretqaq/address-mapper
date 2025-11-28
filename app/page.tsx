@@ -187,7 +187,7 @@ export default function Home() {
                   <ArrowLeft className="w-4 h-4" />
                   返回导入
                 </button>
-                <h1 className="text-xl font-bold text-gray-900">地址映射转换结果</h1>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">地址映射转换结果</h1>
               </div>
             </div>
           </div>
@@ -210,75 +210,84 @@ export default function Home() {
 
   // 导入页面
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-6 lg:p-8">
-        <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 md:p-6 lg:p-8">
+      <div className="w-full max-w-5xl">
         {/* 标题区域 */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">地址映射转换工具</h1>
-          <p className="text-gray-600">以骏伯地址库为主，匹配局方地址（显示所有骏伯地址条目）</p>
+        <div className="text-center mb-10">
+          <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent drop-shadow-lg">
+            <span className="inline-block">地址映射</span>
+            <span className="inline-block ml-2">转换工具</span>
+          </h1>
+          <p className="text-base md:text-lg text-gray-600 font-medium">以骏伯地址库为主，匹配局方地址（显示所有骏伯地址条目）</p>
         </div>
 
-        {/* 主要操作区域 */}
-          <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 lg:p-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-            {/* 文件上传区域 */}
-            <div className="flex-1 w-full">
-              <label
-                htmlFor="file-upload"
-                className="flex items-center justify-center w-full h-32 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-lg appearance-none cursor-pointer hover:border-gray-400 focus:outline-none"
-              >
-                <div className="flex flex-col items-center space-y-2">
-                  <Upload className="w-8 h-8 text-gray-400" />
-                  <span className="font-medium text-gray-600">
-                    {file ? file.name : '点击选择 Excel 文件'}
-                  </span>
-                  <span className="text-sm text-gray-500">支持 .xlsx, .xls 格式</span>
+        {/* 主要操作区域 - 居中设计 */}
+        <div className="bg-white rounded-xl shadow-xl p-8 md:p-10 lg:p-12">
+          {/* 文件上传区域 - 居中 */}
+          <div className="mb-8">
+            <label
+              htmlFor="file-upload"
+              className="flex flex-col items-center justify-center w-full h-56 px-4 py-10 transition bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:from-blue-50 hover:to-indigo-50 focus:outline-none group"
+            >
+              <div className="flex flex-col items-center space-y-4">
+                <div className="p-5 bg-white rounded-full shadow-md group-hover:bg-blue-50 transition-colors">
+                  <Upload className="w-12 h-12 text-gray-400 group-hover:text-blue-600 transition-colors" />
                 </div>
-                <input
-                  id="file-upload"
-                  type="file"
-                  className="hidden"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileChange}
-                  disabled={isProcessing}
-                />
-              </label>
-            </div>
-
-            {/* 操作按钮 */}
-            <div className="flex flex-col gap-3 w-full md:w-auto">
-              <button
-                onClick={handleDownloadTemplate}
-                className="flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                <div className="text-center">
+                  <span className="text-xl font-semibold text-gray-700 block mb-2">
+                    {file ? (
+                      <span className="text-blue-600">{file.name}</span>
+                    ) : (
+                      '点击选择 Excel 文件'
+                    )}
+                  </span>
+                  <span className="text-base text-gray-500">支持 .xlsx, .xls 格式</span>
+                </div>
+              </div>
+              <input
+                id="file-upload"
+                type="file"
+                className="hidden"
+                accept=".xlsx,.xls"
+                onChange={handleFileChange}
                 disabled={isProcessing}
-              >
-                <FileDown className="w-4 h-4" />
-                下载模板
-              </button>
+              />
+            </label>
+          </div>
 
-              <button
-                onClick={handleUpload}
-                disabled={!file || isProcessing}
-                className="flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    处理中...
-                  </>
-                ) : (
-                  <>
-                    <FileSpreadsheet className="w-4 h-4" />
-                    开始转换
-                  </>
-                )}
-              </button>
-            </div>
+          {/* 操作按钮 - 居中水平排列 */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              onClick={handleDownloadTemplate}
+              className="flex items-center justify-center gap-2 px-8 py-3.5 text-base font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors w-full sm:w-auto min-w-[160px]"
+              disabled={isProcessing}
+            >
+              <FileDown className="w-5 h-5" />
+              下载模板
+            </button>
+
+            <button
+              onClick={handleUpload}
+              disabled={!file || isProcessing}
+              className="flex items-center justify-center gap-2 px-8 py-3.5 text-base font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors w-full sm:w-auto min-w-[160px]"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  处理中...
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  开始转换
+                </>
+              )}
+            </button>
           </div>
 
           {/* 错误提示 */}
           {error && (
-            <div className="flex items-center gap-2 p-4 mb-4 text-red-700 bg-red-100 rounded-lg">
+            <div className="mt-6 flex items-center gap-2 p-4 text-red-700 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <span>{error}</span>
             </div>
@@ -286,13 +295,13 @@ export default function Home() {
 
           {/* 成功提示 */}
           {results.length > 0 && !error && (
-            <div className="flex items-center gap-2 p-4 text-green-700 bg-green-100 rounded-lg">
+            <div className="mt-6 flex items-center gap-2 p-4 text-green-700 bg-green-50 border border-green-200 rounded-lg">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
               <span className="font-medium">成功处理 {results.length} 条骏伯地址数据，已自动跳转到结果页面</span>
-          </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-      </main>
+      </div>
+    </main>
   );
 }
