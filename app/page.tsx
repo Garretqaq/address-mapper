@@ -660,6 +660,29 @@ export default function Home() {
   };
 
   /**
+   * 判断局方和骏伯地址是否匹配（用于显示颜色标识）
+   */
+  const isAddressMatch = (junboName: string, operName: string): boolean => {
+    if (!junboName || !operName) return false;
+    return junboName.trim() === operName.trim();
+  };
+
+  /**
+   * 获取地址匹配的样式类名
+   */
+  const getAddressMatchClassName = (junboName: string, operName: string): string => {
+    if (isAddressMatch(junboName, operName)) {
+      // 匹配：淡绿色背景
+      return 'bg-green-50';
+    } else if (operName) {
+      // 不匹配且有局方地址：淡橙色背景（警告色，不要太鲜艳）
+      return 'bg-orange-50';
+    }
+    // 没有局方地址：默认样式
+    return '';
+  };
+
+  /**
    * 匹配状态映射（中文 -> 英文）
    */
   const confidenceMap: Record<string, string> = {
@@ -898,10 +921,12 @@ export default function Home() {
                         className={`border-b hover:bg-gray-50 ${isModified ? 'bg-yellow-50' : ''}`}
                       >
                         <td className="px-3 py-3">{globalIndex}</td>
-                        <td className="px-3 py-3">{result.output.junbo_province_name || '-'}</td>
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
+                          {result.output.junbo_province_name || '-'}
+                        </td>
                         
                         {/* 局方省份 - 可编辑下拉框 */}
-                        <td className="px-3 py-3">
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_province_name || '', currentProvince)}`}>
                           <SearchableSelect
                             value={currentProvince}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'province', value)}
@@ -911,10 +936,12 @@ export default function Home() {
                           />
                         </td>
                         
-                        <td className="px-3 py-3">{result.output.junbo_city_name || '-'}</td>
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
+                          {result.output.junbo_city_name || '-'}
+                        </td>
                         
                         {/* 局方城市 - 可编辑下拉框 */}
-                        <td className="px-3 py-3">
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_city_name || '', currentCity)}`}>
                           <SearchableSelect
                             value={currentCity}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'city', value)}
@@ -925,10 +952,12 @@ export default function Home() {
                           />
                         </td>
                         
-                        <td className="px-3 py-3">{result.output.junbo_district_name || '-'}</td>
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
+                          {result.output.junbo_district_name || '-'}
+                        </td>
                         
                         {/* 局方区县 - 可编辑下拉框 */}
-                        <td className="px-3 py-3">
+                        <td className={`px-3 py-3 ${getAddressMatchClassName(result.output.junbo_district_name || '', currentDistrict)}`}>
                           <SearchableSelect
                             value={currentDistrict}
                             onValueChange={(value) => handleAddressChange(actualRowIndex, 'district', value)}
