@@ -52,6 +52,7 @@ export interface MatchResult {
 export interface OutputAddressData {
   junbo_province_name: string;
   oper_province_name: string;
+  oper_province_code: string; // 局方省份编码
   junbo_city_name: string;
   oper_city_name: string;
   oper_city_code: string;

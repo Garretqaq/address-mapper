@@ -718,6 +718,7 @@ export class AddressMatcher {
       const output: OutputAddressData = {
         junbo_province_name: junboAddress.provinceName,
         oper_province_name: matchResult.matched?.省份名称 || '',
+        oper_province_code: matchResult.matched?.省份编码 || '',
         junbo_city_name: junboAddress.cityName,
         oper_city_name: matchResult.matched?.地市名称 || '',
         oper_city_code: matchResult.matched?.地市编码 || '',

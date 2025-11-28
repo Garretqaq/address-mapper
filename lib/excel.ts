@@ -14,15 +14,20 @@ import type { OperAddressInput, OutputAddressData } from './types';
  */
 export async function readExcel(file: File | Buffer): Promise<OperAddressInput[]> {
   try {
-    let buffer: ArrayBuffer;
+    let buffer: ArrayBuffer | SharedArrayBuffer;
 
     if (file instanceof File) {
       buffer = await file.arrayBuffer();
     } else {
       buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
     }
+    
+    // 确保是 ArrayBuffer
+    const arrayBuffer = buffer instanceof ArrayBuffer 
+      ? buffer 
+      : new Uint8Array(buffer).buffer;
 
-    const workbook = XLSX.read(buffer, { type: 'array' });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     
     // 读取第一个工作表
     const firstSheetName = workbook.SheetNames[0];
@@ -67,6 +72,7 @@ export function writeExcel(data: OutputAddressData[], filename: string = 'addres
     const worksheetData = data.map((item) => ({
       '省份名称(junbo)': item.junbo_province_name,
       '省份名称(局方)': item.oper_province_name,
+      '省份编码(局方)': item.oper_province_code,
       '城市名称(junbo)': item.junbo_city_name,
       '城市名称(局方)': item.oper_city_name,
       '城市编码(局方)': item.oper_city_code,
@@ -85,6 +91,7 @@ export function writeExcel(data: OutputAddressData[], filename: string = 'addres
     const colWidths = [
       { wch: 15 }, // 省份名称(junbo)
       { wch: 15 }, // 省份名称(局方)
+      { wch: 15 }, // 省份编码(局方)
       { wch: 15 }, // 城市名称(junbo)
       { wch: 15 }, // 城市名称(局方)
       { wch: 15 }, // 城市编码(局方)

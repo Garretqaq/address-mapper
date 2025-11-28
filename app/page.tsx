@@ -541,6 +541,7 @@ export default function Home() {
         // 修改省份
         newOutput.oper_province_name = value;
         const provinceCode = getOperProvinceCode(value);
+        newOutput.oper_province_code = provinceCode; // 更新省份编码
         
         // 清空城市和区县
         newOutput.oper_city_name = '';
@@ -567,6 +568,7 @@ export default function Home() {
         const provinceName = result.output.oper_province_name || '';
         newOutput.oper_city_name = value;
         const cityCode = getOperCityCode(provinceName, value);
+        newOutput.oper_city_code = cityCode; // 更新城市编码
         
         // 清空区县
         newOutput.oper_district_name = '';
@@ -590,6 +592,7 @@ export default function Home() {
         const cityName = result.output.oper_city_name || '';
         newOutput.oper_district_name = value;
         const districtCode = getOperDistrictCode(provinceName, cityName, value);
+        newOutput.oper_district_code = districtCode; // 更新区县编码
         
         // 同时更新 input 数据
         const newInput = { ...result.input };
